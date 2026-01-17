@@ -1,0 +1,1026 @@
+#include "parser.h"
+#include <algorithm>
+#include <cctype>
+#include <sstream>
+#include <cstring>
+
+
+namespace {
+std::string ToUpper(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+  return s;
+}
+
+std::vector<std::string> Split(const std::string& s, char delim) {
+  std::vector<std::string> out;
+  std::stringstream ss(s);
+  std::string item;
+  while (std::getline(ss, item, delim)) {
+    if (!item.empty()) out.push_back(item);
+  }
+  return out;
+}
+
+std::string Trim(std::string s) {
+  auto notSpace = [](unsigned char ch) { return !std::isspace(ch); };
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(), notSpace));
+  s.erase(std::find_if(s.rbegin(), s.rend(), notSpace).base(), s.end());
+  return s;
+}
+
+std::vector<Condition> ParseWhereClause(const std::string& whereClause) {
+    std::vector<Condition> conditions;
+    if (whereClause.empty()) return conditions;
+
+    // Split by " AND " (case insensitive)
+    std::vector<std::string> parts;
+    std::string text = whereClause;
+    std::string upper = ToUpper(text);
+    
+    size_t pos = 0;
+    while (true) {
+        size_t nextAnd = upper.find(" AND ", pos);
+        if (nextAnd == std::string::npos) {
+            parts.push_back(text.substr(pos));
+            break;
+        }
+        parts.push_back(text.substr(pos, nextAnd - pos));
+        pos = nextAnd + 5;
+    }
+
+    for (const auto& rawPart : parts) {
+        std::string part = Trim(rawPart);
+        if (part.empty()) continue;
+        std::string upPart = ToUpper(part);
+
+        // Check IN
+        size_t inPos = upPart.find(" IN ");
+        if (inPos == std::string::npos) {
+             // Try check IN(
+             size_t inParen = upPart.find(" IN(");
+             if (inParen != std::string::npos) inPos = inParen;
+        }
+
+        if (inPos != std::string::npos) {
+             Condition c;
+             c.fieldName = Trim(part.substr(0, inPos));
+             c.op = "IN";
+             
+             size_t parenL = part.find('(', inPos);
+             size_t parenR = part.rfind(')');
+             if (parenL != std::string::npos && parenR != std::string::npos && parenR > parenL) {
+                 std::string valList = part.substr(parenL + 1, parenR - parenL - 1);
+                 auto vals = Split(valList, ',');
+                 for(auto& v : vals) {
+                     std::string tv = Trim(v);
+                     if(tv.size() >= 2 && tv.front()=='\'' && tv.back()=='\'') tv = tv.substr(1, tv.size()-2);
+                     c.values.push_back(tv);
+                 }
+                 c.value = valList; 
+             }
+             conditions.push_back(c);
+             continue;
+        }
+
+        // Standard ops
+        std::vector<std::string> ops = { "<=", ">=", "!=", "=", "<", ">", " CONTAINS " }; 
+        bool found = false;
+        for (const auto& op : ops) {
+            size_t p = upPart.find(op);
+            if (p != std::string::npos) {
+                Condition c;
+                c.fieldName = Trim(part.substr(0, p));
+                c.op = Trim(op);
+                c.value = Trim(part.substr(p + op.length()));
+                if (c.value.size() >= 2 && c.value.front() == '\'' && c.value.back() == '\'') {
+                    c.value = c.value.substr(1, c.value.size() - 2);
+                }
+                conditions.push_back(c);
+                found = true;
+                break;
+            }
+        }
+    }
+    return conditions;
+}
+
+std::string TrimQuotes(std::string s) {
+    if (s.size() >= 2) {
+        if ((s.front() == '\'' && s.back() == '\'') || (s.front() == '"' && s.back() == '"')) {
+            return s.substr(1, s.size() - 2);
+        }
+    }
+    return s;
+}
+
+std::string StripSqlComments(const std::string& sql) {
+    std::string out;
+    out.reserve(sql.size());
+    bool inSingle = false;
+    bool inDouble = false;
+
+    for (size_t i = 0; i < sql.size(); ++i) {
+        char c = sql[i];
+        char n = (i + 1 < sql.size()) ? sql[i + 1] : '\0';
+
+        if (!inSingle && !inDouble) {
+            if (c == '-' && n == '-') {
+                i += 2;
+                while (i < sql.size() && sql[i] != '\n' && sql[i] != '\r') ++i;
+                if (i < sql.size()) out.push_back(' ');
+                continue;
+            }
+            if (c == '#') {
+                ++i;
+                while (i < sql.size() && sql[i] != '\n' && sql[i] != '\r') ++i;
+                if (i < sql.size()) out.push_back(' ');
+                continue;
+            }
+            if (c == '/' && n == '*') {
+                i += 2;
+                while (i + 1 < sql.size() && !(sql[i] == '*' && sql[i + 1] == '/')) ++i;
+                if (i + 1 < sql.size()) ++i; // consume '/'
+                out.push_back(' ');
+                continue;
+            }
+        }
+
+        if (c == '\'' && !inDouble) inSingle = !inSingle;
+        if (c == '"' && !inSingle) inDouble = !inDouble;
+
+        out.push_back(c);
+    }
+
+    return out;
+}
+
+bool IsAggregateFunc(const std::string& s, std::string& funcOut) {
+    std::string up = ToUpper(Trim(s));
+    if (up == "COUNT" || up == "SUM" || up == "AVG" || up == "MIN" || up == "MAX") {
+        funcOut = up;
+        return true;
+    }
+    return false;
+}
+
+}
+
+ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
+  std::string noComment = StripSqlComments(rawSql);
+
+  // Normalize: Trim and replace internal whitespace with spaces to handle newlines
+  std::string sql = Trim(noComment);
+  for (char &c : sql) {
+      if (std::isspace(static_cast<unsigned char>(c))) c = ' ';
+  }
+  // Collapse consecutive spaces to a single space for robust keyword parsing.
+  {
+      std::string compact;
+      compact.reserve(sql.size());
+      bool lastSpace = false;
+      for (char c : sql) {
+          if (c == ' ') {
+              if (!lastSpace) compact.push_back(c);
+              lastSpace = true;
+          } else {
+              compact.push_back(c);
+              lastSpace = false;
+          }
+      }
+      sql = Trim(compact);
+  }
+
+  ParsedCommand cmd;
+  std::string upper = ToUpper(sql);
+  // CREATE DATABASE xxx
+  if (upper.find("CREATE DATABASE") == 0) {
+      cmd.type = CommandType::kCreateDatabase;
+
+      std::string namePart = sql.substr(strlen("CREATE DATABASE"));
+      cmd.dbName = Trim(namePart);
+
+      if (cmd.dbName.empty()) {
+          err = "Database name is required";
+      }
+
+      return cmd;
+  }
+
+  // USE database
+  if (upper.find("USE ") == 0) {
+      cmd.type = CommandType::kUseDatabase;
+
+      std::string namePart = sql.substr(strlen("USE"));
+      cmd.dbName = Trim(namePart);
+
+      if (cmd.dbName.empty()) {
+          err = "Database name is required";
+      }
+
+      return cmd;
+  }
+
+  // DROP DATABASE xxx
+  if (upper.find("DROP DATABASE") == 0) {
+      cmd.type = CommandType::kDropDatabase;
+      std::string namePart = sql.substr(strlen("DROP DATABASE"));
+      cmd.dbName = Trim(namePart);
+      if (cmd.dbName.empty()) {
+          err = "Database name is required";
+      }
+      return cmd;
+  }
+
+    // TCL: BEGIN / START TRANSACTION
+    if (upper == "BEGIN" || upper == "BEGIN TRANSACTION" || upper == "START TRANSACTION") {
+        cmd.type = CommandType::kBegin;
+        return cmd;
+    }
+  if (upper == "START TRANSACTION") {
+      cmd.type = CommandType::kBegin;
+      return cmd;
+  }
+
+  // TCL: COMMIT / ROLLBACK
+  if (upper == "COMMIT") {
+      cmd.type = CommandType::kCommit;
+      return cmd;
+  }
+  if (upper == "ROLLBACK") {
+      cmd.type = CommandType::kRollback;
+      return cmd;
+  }
+
+  // TCL: SAVEPOINT
+  if (upper.find("SAVEPOINT") == 0) {
+      cmd.type = CommandType::kSavepoint;
+      cmd.savepointName = Trim(sql.substr(strlen("SAVEPOINT")));
+      if (cmd.savepointName.empty()) err = "SAVEPOINT name required";
+      return cmd;
+  }
+
+  // TCL: ROLLBACK TO [SAVEPOINT] name
+  if (upper.find("ROLLBACK TO") == 0) {
+      cmd.type = CommandType::kRollbackTo;
+      std::string rest = Trim(sql.substr(strlen("ROLLBACK TO")));
+      std::string upRest = ToUpper(rest);
+      if (upRest.find("SAVEPOINT") == 0) {
+          rest = Trim(rest.substr(strlen("SAVEPOINT")));
+      }
+      cmd.savepointName = rest;
+      if (cmd.savepointName.empty()) err = "SAVEPOINT name required";
+      return cmd;
+  }
+
+  // TCL: RELEASE SAVEPOINT name
+  if (upper.find("RELEASE SAVEPOINT") == 0) {
+      cmd.type = CommandType::kRelease;
+      cmd.savepointName = Trim(sql.substr(strlen("RELEASE SAVEPOINT")));
+      if (cmd.savepointName.empty()) err = "SAVEPOINT name required";
+      return cmd;
+  }
+
+  // DCL: CREATE USER
+  if (upper.find("CREATE USER") == 0) {
+      cmd.type = CommandType::kCreateUser;
+      size_t byPos = upper.find(" IDENTIFIED BY ");
+      if (byPos == std::string::npos) {
+          err = "Syntax error: expected IDENTIFIED BY";
+          return cmd;
+      }
+      std::string userPart = Trim(sql.substr(11, byPos - 11));
+      std::string passPart = Trim(sql.substr(byPos + 15));
+      
+      // Strip quotes if present
+      if (userPart.size()>=2 && ((userPart.front()=='\'' && userPart.back()=='\'') || (userPart.front()=='"' && userPart.back()=='"')))
+          userPart = userPart.substr(1, userPart.size()-2);
+      if (passPart.size()>=2 && ((passPart.front()=='\'' && passPart.back()=='\'') || (passPart.front()=='"' && passPart.back()=='"')))
+          passPart = passPart.substr(1, passPart.size()-2);
+
+      cmd.username = userPart;
+      cmd.password = passPart;
+      return cmd;
+  }
+
+  // DCL: DROP USER
+  if (upper.find("DROP USER") == 0) {
+      cmd.type = CommandType::kDropUser;
+      std::string userPart = Trim(sql.substr(9));
+      if (userPart.size()>=2 && ((userPart.front()=='\'' && userPart.back()=='\'') || (userPart.front()=='"' && userPart.back()=='"')))
+          userPart = userPart.substr(1, userPart.size()-2);
+      cmd.username = userPart;
+      return cmd;
+  }
+
+  // DCL: GRANT
+  if (upper.find("GRANT") == 0) {
+      cmd.type = CommandType::kGrant;
+      size_t onPos = upper.find(" ON ");
+      size_t toPos = upper.find(" TO ");
+      if (onPos == std::string::npos || toPos == std::string::npos) {
+          err = "Syntax error: usage GRANT <privs> ON <table> TO <user>";
+          return cmd;
+      }
+      
+      std::string privStr = Trim(sql.substr(5, onPos - 5));
+      std::string tableStr = Trim(sql.substr(onPos + 4, toPos - (onPos + 4)));
+      std::string userStr = Trim(sql.substr(toPos + 4));
+
+      cmd.privileges = Split(privStr, ',');
+      for(auto& s : cmd.privileges) {
+          s = Trim(s);
+          if (ToUpper(s) == "ALL") { std::vector<std::string> all = {"SELECT","INSERT","UPDATE","DELETE","CREATE","DROP"}; cmd.privileges = all; break; }
+      }
+      
+      cmd.tableName = tableStr;
+      
+      if (userStr.size()>=2 && ((userStr.front()=='\'' && userStr.back()=='\'') || (userStr.front()=='"' && userStr.back()=='"')))
+          userStr = userStr.substr(1, userStr.size()-2);
+      cmd.username = userStr;
+      return cmd;
+  }
+
+  // DCL: REVOKE
+  if (upper.find("REVOKE") == 0) {
+      cmd.type = CommandType::kRevoke;
+      size_t onPos = upper.find(" ON ");
+      size_t fromPos = upper.find(" FROM ");
+      if (onPos == std::string::npos || fromPos == std::string::npos) {
+          err = "Syntax error: usage REVOKE <privs> ON <table> FROM <user>";
+          return cmd;
+      }
+      std::string privStr = Trim(sql.substr(6, onPos - 6));
+      std::string tableStr = Trim(sql.substr(onPos + 4, fromPos - (onPos + 4)));
+      std::string userStr = Trim(sql.substr(fromPos + 6));
+      
+      cmd.privileges = Split(privStr, ',');
+      for(auto& s : cmd.privileges) {
+          s = Trim(s);
+          if (ToUpper(s) == "ALL") { std::vector<std::string> all = {"SELECT","INSERT","UPDATE","DELETE","CREATE","DROP"}; cmd.privileges = all; break; }
+      }
+
+      cmd.tableName = tableStr;
+
+      if (userStr.size()>=2 && ((userStr.front()=='\'' && userStr.back()=='\'') || (userStr.front()=='"' && userStr.back()=='"')))
+          userStr = userStr.substr(1, userStr.size()-2);
+      cmd.username = userStr;
+      return cmd;
+  }
+
+  // CREATE [UNIQUE] INDEX idxName ON tableName (fieldName)
+  if (upper.find("CREATE") == 0 && upper.find("INDEX") != std::string::npos) {
+      if (upper.find("CREATE INDEX") == 0) {
+           cmd.type = CommandType::kCreateIndex;
+           cmd.isUnique = false;
+      } else if (upper.find("CREATE UNIQUE INDEX") == 0) {
+           cmd.type = CommandType::kCreateIndex;
+           cmd.isUnique = true;
+      } else {
+          // Not an index command or handled elsewhere
+      }
+
+      if (cmd.type == CommandType::kCreateIndex) {
+          std::string prefix = cmd.isUnique ? "CREATE UNIQUE INDEX" : "CREATE INDEX";
+          std::string rest = sql.substr(strlen(prefix.c_str()));
+          
+          auto onPos = ToUpper(rest).find(" ON ");
+          if (onPos == std::string::npos) {
+              err = "Syntax error: expected ON";
+              return cmd;
+          }
+          
+          cmd.indexName = Trim(rest.substr(0, onPos)); 
+          
+          std::string afterOn = rest.substr(onPos + 4); 
+          auto parenL = afterOn.find('(');
+          auto parenR = afterOn.rfind(')');
+          
+          if (parenL == std::string::npos || parenR == std::string::npos || parenR < parenL) {
+              err = "Syntax error: expected (column)";
+              return cmd;
+          }
+          
+          cmd.tableName = Trim(afterOn.substr(0, parenL));
+          cmd.fieldName = Trim(afterOn.substr(parenL + 1, parenR - parenL - 1));
+          
+          return cmd;
+      }
+  }
+
+  // ALTER TABLE
+  if (upper.find("ALTER TABLE") == 0) {
+      cmd.type = CommandType::kAlter;
+      std::string rest = Trim(sql.substr(strlen("ALTER TABLE")));
+      size_t firstSpace = rest.find(' ');
+      if (firstSpace == std::string::npos) { err = "Incomplete ALTER TABLE"; return cmd; }
+      
+      cmd.tableName = Trim(rest.substr(0, firstSpace));
+      std::string action = Trim(rest.substr(firstSpace + 1));
+      std::string upAction = ToUpper(action);
+
+      // ADD ...
+      if (upAction.find("ADD") == 0) {
+           // ADD INDEX
+           if (upAction.find("ADD INDEX") == 0) {
+               cmd.alterOp = AlterOperation::kAddIndex;
+               std::string body = Trim(action.substr(9));
+               
+               size_t openParen = body.find('(');
+               if (openParen == std::string::npos) { err="Missing ( for INDEX"; return cmd; }
+               
+               if (openParen > 0) {
+                  cmd.indexName = Trim(body.substr(0, openParen));
+               }
+               
+               size_t closeParen = body.find(')', openParen);
+               if (closeParen == std::string::npos) { err="Missing ) for INDEX"; return cmd; }
+               
+               cmd.fieldName = Trim(body.substr(openParen + 1, closeParen - openParen - 1));
+               return cmd;
+           }
+           
+           // ADD CONSTRAINT
+           if (upAction.find("ADD CONSTRAINT") == 0) {
+                cmd.alterOp = AlterOperation::kAddConstraint;
+                cmd.indexName = Trim(action.substr(14)); // Just storing name for now
+                return cmd;
+           }
+           
+           // ADD COLUMN
+           size_t offset = 3; // "ADD"
+           if (upAction.find("ADD COLUMN") == 0) offset = 10;
+           
+           cmd.alterOp = AlterOperation::kAddColumn;
+           std::string colDef = Trim(action.substr(offset));
+           
+           // Check for AFTER / FIRST
+           size_t afterPos = ToUpper(colDef).find(" AFTER ");
+           size_t firstPos = ToUpper(colDef).find(" FIRST");
+           
+           if (afterPos != std::string::npos) {
+               cmd.extraInfo = Trim(colDef.substr(afterPos + 7));
+               colDef = Trim(colDef.substr(0, afterPos));
+           } else if (firstPos != std::string::npos) {
+               cmd.extraInfo = "FIRST";
+               colDef = Trim(colDef.substr(0, firstPos));
+           }
+           
+           auto parts = Split(colDef, ' ');
+           if (parts.size() < 2) { err = "Invalid field definition"; return cmd; }
+           
+           cmd.columnDef.name = parts[0];
+           cmd.columnDef.type = parts[1];
+           for (size_t i = 2; i < parts.size(); ++i) {
+                  std::string p = ToUpper(parts[i]);
+                  if (p == "PRIMARY" && i+1 < parts.size() && ToUpper(parts[i+1])=="KEY") {
+                      cmd.columnDef.isKey = true; cmd.columnDef.nullable = false; ++i;
+                  } else if (p == "NOT" && i+1 < parts.size() && ToUpper(parts[i+1])=="NULL") {
+                      cmd.columnDef.nullable = false; ++i;
+                  }
+           }
+           return cmd;
+      }
+      
+      // DROP ...
+      if (upAction.find("DROP") == 0) {
+           if (upAction.find("DROP COLUMN") == 0) {
+               cmd.alterOp = AlterOperation::kDropColumn;
+               cmd.fieldName = Trim(action.substr(11));
+               return cmd;
+           }
+           if (upAction.find("DROP INDEX") == 0) {
+               cmd.alterOp = AlterOperation::kDropIndex;
+               cmd.indexName = Trim(action.substr(10));
+               return cmd;
+           }
+           if (upAction.find("DROP FOREIGN KEY") == 0) {
+               cmd.alterOp = AlterOperation::kDropConstraint;
+               cmd.indexName = Trim(action.substr(16));
+               return cmd;
+           }
+           // Fallback for DROP colName
+           cmd.alterOp = AlterOperation::kDropColumn;
+           cmd.fieldName = Trim(action.substr(4));
+           return cmd;
+      }
+      
+      // MODIFY ...
+      if (upAction.find("MODIFY") == 0) {
+           cmd.alterOp = AlterOperation::kModifyColumn;
+           size_t offset = 6;
+           if (upAction.find("MODIFY COLUMN") == 0) offset = 13;
+           std::string colDef = Trim(action.substr(offset));
+           
+           auto parts = Split(colDef, ' ');
+           if (parts.size() < 2) { err = "Invalid field definition"; return cmd; }
+           
+           cmd.columnDef.name = parts[0];
+           cmd.columnDef.type = parts[1];
+           for (size_t i = 2; i < parts.size(); ++i) {
+                  std::string p = ToUpper(parts[i]);
+                  if (p == "PRIMARY" && i+1 < parts.size() && ToUpper(parts[i+1])=="KEY") {
+                      cmd.columnDef.isKey = true; cmd.columnDef.nullable = false; ++i;
+                  } else if (p == "NOT" && i+1 < parts.size() && ToUpper(parts[i+1])=="NULL") {
+                      cmd.columnDef.nullable = false; ++i;
+                  }
+           }
+           return cmd;
+      }
+
+      // RENAME ...
+      if (upAction.find("RENAME") == 0) {
+          if (upAction.find("RENAME COLUMN") == 0) {
+              cmd.alterOp = AlterOperation::kRenameColumn;
+              std::string body = Trim(action.substr(13));
+              size_t toPos = ToUpper(body).find(" TO ");
+              if (toPos == std::string::npos) { err = "RENAME COLUMN missing TO"; return cmd; }
+              cmd.fieldName = Trim(body.substr(0, toPos)); 
+              cmd.newName = Trim(body.substr(toPos + 4));
+              return cmd;
+          }
+          if (upAction.find("RENAME TO") == 0) {
+               cmd.alterOp = AlterOperation::kRenameTable;
+               cmd.newName = Trim(action.substr(9));
+               return cmd;
+          }
+      }
+      
+      err = "Unknown ALTER operation";
+      return cmd;
+  }
+
+  // DROP INDEX indexName ON tableName
+  // We treat indexName as fieldName for simplicity in this implementation
+  if (upper.find("DROP INDEX") == 0) {
+      cmd.type = CommandType::kDropIndex;
+      std::string rest = sql.substr(strlen("DROP INDEX"));
+      
+      auto onPos = ToUpper(rest).find(" ON ");
+      if (onPos == std::string::npos) {
+          err = "Syntax error: expected ON";
+          return cmd;
+      }
+      
+      cmd.fieldName = Trim(rest.substr(0, onPos)); // Using indexName as fieldName
+      cmd.tableName = Trim(rest.substr(onPos + 4));
+      
+      return cmd;
+  }
+  
+  // SHOW INDEX FROM tableName
+  if (upper.find("SHOW INDEX") == 0) {
+      cmd.type = CommandType::kShowIndexes;
+      std::string rest = sql.substr(strlen("SHOW INDEX"));
+      
+      // Handle "FROM"
+      auto fromPos = ToUpper(rest).find(" FROM ");
+      if (fromPos == std::string::npos) {
+          // Maybe it was "SHOW INDEXES FROM"?
+          if (ToUpper(rest).find("ES FROM ") != std::string::npos) {
+               // handle logic if needed, but simple "SHOW INDEX FROM" is standard MySQL
+          }
+          err = "Syntax error: expected FROM";
+          return cmd;
+      }
+      
+      cmd.tableName = Trim(rest.substr(fromPos + 6));
+      return cmd;
+  }
+  
+  // ====== REPLACE the whole CREATE TABLE branch in Parser::Parse() ======
+  if (upper.find("CREATE TABLE") == 0) {
+      cmd.type = CommandType::kCreate;
+
+      // Support:
+      // 1) CREATE TABLE t (id int, name char[32])
+      // 2) CREATE TABLE t (id int primary key, name char(32) not null) INTO dbname
+      auto intoPos = upper.find("INTO");
+      std::string createBody = (intoPos == std::string::npos)
+          ? sql.substr(strlen("CREATE TABLE"))
+          : sql.substr(strlen("CREATE TABLE"), intoPos - strlen("CREATE TABLE"));
+
+      auto parenL = createBody.find('(');
+      auto parenR = createBody.rfind(')');
+      if (parenL == std::string::npos || parenR == std::string::npos || parenR <= parenL) {
+          err = "Invalid field list";
+          return cmd;
+      }
+
+      cmd.tableName = Trim(createBody.substr(0, parenL));
+      std::string fieldList = createBody.substr(parenL + 1, parenR - parenL - 1);
+
+      auto fields = Split(fieldList, ',');
+      for (auto& raw : fields) {
+          std::string fstr = Trim(raw);
+          if (fstr.empty()) continue;
+
+          // Tokenize by spaces, but keep type token like char(32) or char[32] together
+          auto parts = Split(fstr, ' ');
+          if (parts.size() < 2) continue;
+
+          Field field;
+          field.name = parts[0];
+          field.type = parts[1];
+          field.size = 0;
+          field.isKey = false;
+          field.nullable = true;
+          field.valid = true;
+
+          // Parse constraints (very simple)
+          // supports: PRIMARY KEY, NOT NULL
+          for (size_t i = 2; i < parts.size(); ++i) {
+              std::string p = ToUpper(parts[i]);
+              if (p == "PRIMARY") {
+                  if (i + 1 < parts.size() && ToUpper(parts[i + 1]) == "KEY") {
+                      field.isKey = true;
+                      field.nullable = false;
+                      ++i;
+                  }
+              }
+              else if (p == "NOT") {
+                  if (i + 1 < parts.size() && ToUpper(parts[i + 1]) == "NULL") {
+                      field.nullable = false;
+                      ++i;
+                  }
+              }
+          }
+
+          cmd.schema.fields.push_back(field);
+      }
+
+      cmd.schema.tableName = cmd.tableName;
+
+      if (intoPos != std::string::npos) {
+          std::string afterInto = sql.substr(intoPos + strlen("INTO"));
+          cmd.dbName = Trim(afterInto);
+      }
+      else {
+          cmd.dbName = "default";
+      }
+
+      return cmd;
+  }
+
+
+    if (upper.find("INSERT INTO") == 0) {
+        cmd.type = CommandType::kInsert;
+        // INSERT INTO table VALUES(a,b,c) [IN db]
+        // Also supports: INSERT INTO table (col1, col2) VALUES ...
+        
+        auto valuesPos = ToUpper(sql).find("VALUES");
+        if (valuesPos == std::string::npos) {
+            err = "Invalid INSERT: missing VALUES";
+            return cmd;
+        }
+
+        std::string tablePart = sql.substr(strlen("INSERT INTO"), valuesPos - strlen("INSERT INTO"));
+        tablePart = Trim(tablePart);
+
+        // Check if tablePart contains column list like "users (id, name)"
+        auto parenOpen = tablePart.find('(');
+        if (parenOpen != std::string::npos) {
+            // Extract just the table name
+            cmd.tableName = Trim(tablePart.substr(0, parenOpen));
+            // Note: We currently ignore the column list and assume values are in schema order.
+            // A full implementation would parse columns and reorder 'values' accordingly.
+        } else {
+            cmd.tableName = tablePart;
+        }
+
+        // ... VALUES ...
+
+        size_t currentPos = valuesPos;
+        while (currentPos < sql.size()) {
+            size_t parenL = sql.find('(', currentPos);
+            if (parenL == std::string::npos) break;
+
+            size_t parenR = sql.find(')', parenL); 
+            if (parenR == std::string::npos) {
+                err = "Missing closing parenthesis";
+                return cmd;
+            }
+
+            std::string valueList = sql.substr(parenL + 1, parenR - parenL - 1);
+            auto vals = Split(valueList, ',');
+            Record rec;
+            for (auto& v : vals) rec.values.push_back(TrimQuotes(Trim(v)));
+            cmd.records.push_back(rec);
+            
+            currentPos = parenR + 1;
+            
+            size_t nextComma = sql.find(',', currentPos);
+            size_t nextIn = ToUpper(sql).find(" IN ", currentPos);
+            
+            if (nextIn != std::string::npos && (nextComma == std::string::npos || nextIn < nextComma)) {
+                break;
+            }
+
+            if (nextComma != std::string::npos) {
+                 bool isCommaNext = true;
+                 for(size_t k = currentPos; k < nextComma; ++k) {
+                     if(!isspace(sql[k])) { isCommaNext = false; break; }
+                 }
+                 if(isCommaNext) {
+                     currentPos = nextComma + 1;
+                     continue;
+                 }
+            }
+            break;
+        }
+
+        std::string suffix = sql.substr(currentPos);
+        auto inPos = ToUpper(suffix).find(" IN ");
+        if (inPos != std::string::npos) {
+             cmd.dbName = Trim(suffix.substr(inPos + 4));
+        }
+
+        if(cmd.records.empty()) {
+            err = "No values found";
+        }
+        return cmd;
+    }
+
+    if (upper.find("DELETE FROM") == 0) {
+        cmd.type = CommandType::kDelete;
+        // DELETE FROM table WHERE field = value
+        std::string rest = sql.substr(strlen("DELETE FROM"));
+        auto wherePos = ToUpper(rest).find("WHERE");
+        
+        if (wherePos == std::string::npos) {
+             cmd.tableName = Trim(rest);
+        } else {
+             cmd.tableName = Trim(rest.substr(0, wherePos));
+             std::string condPart = rest.substr(wherePos + strlen("WHERE"));
+             cmd.conditions = ParseWhereClause(condPart);
+        }
+        return cmd;
+    }
+
+    if (upper.find("UPDATE") == 0) {
+        cmd.type = CommandType::kUpdate;
+        // UPDATE table SET a=v, b=v WHERE field=val
+        auto setPos = upper.find("SET");
+        if (setPos == std::string::npos) {
+            err = "UPDATE missing SET";
+            return cmd;
+        }
+        cmd.tableName = Trim(sql.substr(strlen("UPDATE"), setPos - strlen("UPDATE")));
+        
+        std::string afterSet = sql.substr(setPos + strlen("SET"));
+        auto wherePos = ToUpper(afterSet).find("WHERE");
+        std::string assignPart = (wherePos == std::string::npos) ? afterSet : afterSet.substr(0, wherePos);
+        
+        auto pairs = Split(assignPart, ',');
+        for (auto& p : pairs) {
+            auto eq = p.find('=');
+            if (eq != std::string::npos) {
+                cmd.assignments.push_back({Trim(p.substr(0, eq)), TrimQuotes(Trim(p.substr(eq + 1)))});
+            }
+        }
+
+        if (wherePos != std::string::npos) {
+             std::string condPart = afterSet.substr(wherePos + strlen("WHERE"));
+             cmd.conditions = ParseWhereClause(condPart);
+        }
+        return cmd;
+    }
+
+    if (upper.find("DROP TABLE") == 0) {
+        cmd.type = CommandType::kDrop;
+        cmd.tableName = Trim(sql.substr(strlen("DROP TABLE")));
+        return cmd;
+    }
+    
+    if (upper.find("RENAME TABLE") == 0) {
+        cmd.type = CommandType::kRename;
+        // RENAME TABLE old TO new
+        std::string rest = sql.substr(strlen("RENAME TABLE"));
+        auto toPos = ToUpper(rest).find(" TO ");
+        if (toPos == std::string::npos) {
+             err = "RENAME syntax: RENAME TABLE old TO new";
+             return cmd;
+        }
+        cmd.tableName = Trim(rest.substr(0, toPos));
+        cmd.newName = Trim(rest.substr(toPos + 4));
+        return cmd;
+    }
+
+    if (upper.find("SELECT") == 0) {
+        cmd.type = CommandType::kSelect;
+
+        size_t fromPos = ToUpper(sql).find(" FROM ");
+        if (fromPos == std::string::npos) { err = "Missing FROM"; return cmd; }
+
+        // 1. Parse Projection and Aliases
+        std::string projStr = sql.substr(6, fromPos - 6);
+        auto projParts = Split(projStr, ',');
+        for (auto& p : projParts) {
+            std::string cur = Trim(p);
+            std::string upperCur = ToUpper(cur);
+            size_t asPos = upperCur.find(" AS ");
+            std::string expr;
+            std::string alias;
+            if (asPos != std::string::npos) {
+                expr = Trim(cur.substr(0, asPos));
+                alias = Trim(cur.substr(asPos + 4));
+            } else {
+                // If substring " " exists after trimming, might be implicit alias.
+                size_t spacePos = cur.rfind(' ');
+                if (spacePos != std::string::npos) {
+                    expr = Trim(cur.substr(0, spacePos));
+                    alias = Trim(cur.substr(spacePos + 1));
+                } else {
+                    expr = cur;
+                }
+            }
+
+            // Detect aggregate function: FUNC(expr)
+            bool isAgg = false;
+            AggregateExpr agg;
+            {
+                size_t lp = expr.find('(');
+                size_t rp = expr.rfind(')');
+                if (lp != std::string::npos && rp != std::string::npos && rp > lp) {
+                    std::string funcName;
+                    if (IsAggregateFunc(expr.substr(0, lp), funcName)) {
+                        isAgg = true;
+                        agg.func = funcName;
+                        agg.field = Trim(expr.substr(lp + 1, rp - lp - 1));
+                        if (agg.field.empty()) agg.field = "*";
+                        agg.alias = alias;
+                    }
+                }
+            }
+
+            SelectExpr sel;
+            sel.isAggregate = isAgg;
+            sel.alias = alias;
+            if (isAgg) {
+                sel.agg = agg;
+                sel.field = expr;
+                cmd.query.aggregates.push_back(agg);
+            } else {
+                sel.field = expr;
+                cmd.query.projection.push_back(expr);
+                cmd.query.projectionAliases.push_back(alias);
+            }
+            cmd.query.selectExprs.push_back(sel);
+        }
+
+        // 2. Parse FROM and JOIN
+        size_t startRest = fromPos + 6;
+        std::string upperSql = ToUpper(sql);
+        
+        size_t joinPos = std::string::npos;
+        size_t wherePos = upperSql.find(" WHERE ", startRest);
+        size_t groupPos = upperSql.find(" GROUP BY ", startRest);
+        size_t orderPos = upperSql.find(" ORDER BY ", startRest);
+        size_t bareJoin = std::string::npos;
+
+        size_t leftJoin = upperSql.find(" LEFT JOIN ", startRest);
+        size_t rightJoin = upperSql.find(" RIGHT JOIN ", startRest);
+        size_t innerJoin = upperSql.find(" INNER JOIN ", startRest);
+        size_t justJoin = upperSql.find(" JOIN ", startRest);
+
+        // Find the effective JOIN clause (ignoring keywords inside WHERE if any - simple check)
+        auto isValidJoin = [&](size_t pos) { 
+            if (pos == std::string::npos) return false;
+            if (wherePos != std::string::npos && pos > wherePos) return false;
+            if (groupPos != std::string::npos && pos > groupPos) return false;
+            if (orderPos != std::string::npos && pos > orderPos) return false;
+            return true;
+        };
+
+        if (isValidJoin(leftJoin)) {
+            joinPos = leftJoin;
+            cmd.query.joinType = JoinType::kLeft;
+            bareJoin = leftJoin + 5; // " LEFT" -> point to " JOIN"
+        } else if (isValidJoin(rightJoin)) {
+            joinPos = rightJoin;
+            cmd.query.joinType = JoinType::kRight;
+            bareJoin = rightJoin + 6;
+        } else if (isValidJoin(innerJoin)) {
+            joinPos = innerJoin;
+            cmd.query.joinType = JoinType::kInner;
+            bareJoin = innerJoin + 6;
+        } else if (isValidJoin(justJoin)) {
+            joinPos = justJoin;
+            cmd.query.joinType = JoinType::kInner;
+            bareJoin = justJoin; // points to " JOIN"
+        }
+
+        // T1
+        size_t t1End = sql.size();
+        if (joinPos != std::string::npos) t1End = joinPos;
+        if (wherePos != std::string::npos && wherePos < t1End) t1End = wherePos;
+        if (groupPos != std::string::npos && groupPos < t1End) t1End = groupPos;
+        if (orderPos != std::string::npos && orderPos < t1End) t1End = orderPos;
+        std::string t1Clause = Trim(sql.substr(startRest, t1End - startRest));
+        
+        // T1 Alias
+        {
+             std::string upT1 = ToUpper(t1Clause);
+             size_t asPos = upT1.find(" AS ");
+             if (asPos != std::string::npos) {
+                 cmd.tableName = Trim(t1Clause.substr(0, asPos));
+                 cmd.query.tableAlias = Trim(t1Clause.substr(asPos + 4));
+             } else {
+                 size_t sp = t1Clause.rfind(' ');
+                 if (sp != std::string::npos) {
+                     cmd.tableName = Trim(t1Clause.substr(0, sp));
+                     cmd.query.tableAlias = Trim(t1Clause.substr(sp + 1));
+                 } else {
+                     cmd.tableName = t1Clause;
+                 }
+             }
+        }
+
+        // T2 & Join Logic
+        if (joinPos != std::string::npos) {
+            size_t startT2 = bareJoin + 6; // After " JOIN "
+            size_t onPos = upperSql.find(" ON ", startT2);
+            if (onPos == std::string::npos) { err = "JOIN missing ON"; return cmd; }
+            if (wherePos != std::string::npos && onPos > wherePos) { err = "ON clause after WHERE?"; return cmd; }
+            if (groupPos != std::string::npos && onPos > groupPos) { err = "ON clause after GROUP BY?"; return cmd; }
+            if (orderPos != std::string::npos && onPos > orderPos) { err = "ON clause after ORDER BY?"; return cmd; }
+
+            std::string t2Clause = Trim(sql.substr(startT2, onPos - startT2));
+            
+             // T2 Alias
+            {
+                 std::string upT2 = ToUpper(t2Clause);
+                 size_t asPos = upT2.find(" AS ");
+                 if (asPos != std::string::npos) {
+                     cmd.query.joinTable = Trim(t2Clause.substr(0, asPos));
+                     cmd.query.joinTableAlias = Trim(t2Clause.substr(asPos + 4));
+                 } else {
+                     size_t sp = t2Clause.rfind(' ');
+                     if (sp != std::string::npos) {
+                         cmd.query.joinTable = Trim(t2Clause.substr(0, sp));
+                         cmd.query.joinTableAlias = Trim(t2Clause.substr(sp + 1));
+                     } else {
+                         cmd.query.joinTable = t2Clause;
+                     }
+                 }
+            }
+            
+            size_t onEnd = sql.size();
+            if (wherePos != std::string::npos && wherePos < onEnd) onEnd = wherePos;
+            if (groupPos != std::string::npos && groupPos < onEnd) onEnd = groupPos;
+            if (orderPos != std::string::npos && orderPos < onEnd) onEnd = orderPos;
+            std::string onCond = Trim(sql.substr(onPos + 4, onEnd - (onPos + 4)));
+            auto eq = onCond.find('=');
+            if (eq != std::string::npos) {
+                cmd.query.joinOnLeft = Trim(onCond.substr(0, eq));
+                cmd.query.joinOnRight = Trim(onCond.substr(eq + 1));
+            } else {
+                err = "Invalid JOIN ON (e.g. T1.id = T2.id)"; return cmd;
+            }
+        }
+
+        // 3. WHERE content
+        if (wherePos != std::string::npos) {
+          size_t whereEnd = sql.size();
+          if (groupPos != std::string::npos && groupPos > wherePos) whereEnd = groupPos;
+          if (orderPos != std::string::npos && orderPos > wherePos) whereEnd = orderPos;
+          std::string condPart = sql.substr(wherePos + 7, whereEnd - (wherePos + 7));
+          cmd.query.conditions = ParseWhereClause(condPart);
+        }
+
+        // 4. GROUP BY content
+        if (groupPos != std::string::npos) {
+            size_t groupEnd = sql.size();
+            if (orderPos != std::string::npos && orderPos > groupPos) groupEnd = orderPos;
+            std::string groupPart = Trim(sql.substr(groupPos + 10, groupEnd - (groupPos + 10)));
+            auto groupFields = Split(groupPart, ',');
+            for (auto& raw : groupFields) {
+                std::string part = Trim(raw);
+                if (!part.empty()) cmd.query.groupBy.push_back(part);
+            }
+        }
+
+        // 5. ORDER BY content
+        if (orderPos != std::string::npos) {
+            std::string orderPart = Trim(sql.substr(orderPos + 10));
+            auto orderFields = Split(orderPart, ',');
+            for (auto& raw : orderFields) {
+                std::string part = Trim(raw);
+                if (part.empty()) continue;
+                std::string up = ToUpper(part);
+                bool asc = true;
+                if (up.size() >= 5 && up.rfind(" DESC") == up.size() - 5) {
+                    asc = false;
+                    part = Trim(part.substr(0, part.size() - 5));
+                } else if (up.size() >= 4 && up.rfind(" ASC") == up.size() - 4) {
+                    asc = true;
+                    part = Trim(part.substr(0, part.size() - 4));
+                }
+                if (!part.empty()) cmd.query.orderBy.push_back({part, asc});
+            }
+        }
+        return cmd;
+    }
+
+  err = "Unsupported or unrecognized SQL";
+  return cmd;
+}

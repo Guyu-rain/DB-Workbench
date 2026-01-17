@@ -1,0 +1,14 @@
+C:\Users\20979\Desktop\Project12\src\api_server.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\api_server.obj
+C:\Users\20979\Desktop\Project12\src\auth.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\auth.obj
+C:\Users\20979\Desktop\Project12\src\main.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\main.obj
+C:\Users\20979\Desktop\Project12\src\parser.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\parser.obj
+C:\Users\20979\Desktop\Project12\src\storage_engine.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\storage_engine.obj
+C:\Users\20979\Desktop\Project12\src\storage_engine_txn.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\storage_engine_txn.obj
+C:\Users\20979\Desktop\Project12\src\ddl.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\ddl.obj
+C:\Users\20979\Desktop\Project12\src\dml.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\dml.obj
+C:\Users\20979\Desktop\Project12\src\query.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\query.obj
+C:\Users\20979\Desktop\Project12\src\http_server.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\http_server.obj
+C:\Users\20979\Desktop\Project12\src\txn\lock_manager.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\lock_manager.obj
+C:\Users\20979\Desktop\Project12\src\txn\log_manager.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\log_manager.obj
+C:\Users\20979\Desktop\Project12\src\txn\txn_manager.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\txn_manager.obj
+C:\Users\20979\Desktop\Project12\src\txn\recovery.cpp;C:\Users\20979\Desktop\Project12\Project12\x64\Debug\recovery.obj

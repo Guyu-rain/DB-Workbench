@@ -1,0 +1,34 @@
+下面给出一个轻量方案，便于前端与后端衔接，保持简单且可渐进扩展。
+
+接口模式（推荐 REST + JSON）
+
+POST /api/query：请求体 { schema, table, filter, limit }，返回 { rows: [{id,name,age,role,status}], sql: "SELECT ..." }。
+POST /api/insert：请求体 { schema, table, row: {...} }，返回 { ok: true, id }。
+POST /api/update：请求体 { schema, table, id, patch: {...} }，返回 { ok: true }。
+POST /api/delete：请求体 { schema, table, id }，返回 { ok: true }。
+统一错误格式：{ ok: false, error: "message" }，HTTP 状态用 200/400/500 区分。
+前端改动要点
+
+在 runQuery() 里用 fetch('/api/query', {...}) 取数据，成功后 renderTable(res.rows) 并显示 res.sql。
+“Insert Row” 改为收集输入后调用 /api/insert；成功后再调用 /api/query 刷新。
+加一个全局 setLoading(true/false) 和错误提示（toast 或顶部条）。
+后端实现建议（C++ 示例思路）
+
+提供一个轻量 HTTP 层（如 cpp-httplib 或 Pistache）；路由到上述四个接口。
+在路由中调用你现有的 StorageEngine + DDL/DML/QueryService：
+/api/query：解析 filter → 构造 QueryPlan → Select → 序列化 rows。
+/api/insert：构造 Record → Insert。
+/api/update：构造 assignments → Update。
+/api/delete：构造 cond（基于 id）→ Delete。
+返回 JSON（可用 nlohmann/json）。设定 Content-Type: application/json。
+约定与安全
+
+过滤条件先限制在 age 等简单字段，避免任意 SQL；后端自行验证字段名和操作符。
+设定最大 limit（如 200）防止大结果。
+记录/表名白名单，避免路径穿越。
+快速落地步骤
+
+后端加路由：/api/query → 调用现有 QueryService；返回 JSON。
+前端 runQuery 改 fetch 并渲染响应；加入 loading/error。
+“Insert Row” 按 /api/insert，成功后自动刷新查询。
+验证 200/400/500 流程与错误提示。
