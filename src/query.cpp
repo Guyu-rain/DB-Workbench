@@ -5,6 +5,7 @@
 #include <string>
 #include <map>
 #include <set>
+#include <functional>
 #include "txn/lock_manager.h"
 
 namespace {
@@ -69,6 +70,64 @@ static bool FieldExists(const TableSchema& schema, const std::string& fieldName)
     return false;
 }
 
+// Helper to infer schema from a subquery result for outer query usage
+static TableSchema InferSchemaFromPlan(const TableSchema& srcSchema, const QueryPlan& plan) {
+    TableSchema out;
+    out.tableName = "Derived";
+    bool hasStar = false; // default if empty
+    if (plan.projection.empty()) hasStar = true;
+    for(const auto& p : plan.projection) if (p=="*") hasStar = true;
+    
+    if (hasStar) {
+        // Copy fields
+        out.fields = srcSchema.fields;
+        // If there are other expressions, they are appended? 
+        // Current system likely doesn't support "*, col".
+    } else {
+        // Explicit fields
+        for (size_t i = 0; i < plan.projection.size(); ++i) {
+             Field f;
+             // If alias exists, use it
+             std::string alias;
+             if (i < plan.projectionAliases.size()) alias = plan.projectionAliases[i];
+             
+             f.name = alias.empty() ? plan.projection[i] : alias;
+             f.type = "string"; // simplistic
+             out.fields.push_back(f);
+        }
+        // Also add aggregates as fields
+        for (const auto& agg : plan.aggregates) {
+             Field f;
+             f.name = agg.alias.empty() ? (agg.func + "(" + agg.field + ")") : agg.alias;
+             f.type = "string";
+             out.fields.push_back(f);
+        }
+    }
+    return out;
+}
+
+bool QueryService::ExecuteSubQuery(const std::string& datPath, const std::string& dbfPath, const QueryPlan& plan, std::vector<Record>& out, std::string& err) {
+    std::function<bool(const QueryPlan&, TableSchema&)> resolveSchema = 
+        [&](const QueryPlan& p, TableSchema& s) -> bool {
+        if (!p.sourceTable.empty()) {
+            return engine_.LoadSchema(dbfPath, p.sourceTable, s, err);
+        }
+        if (p.sourceSubQuery) {
+            TableSchema inner;
+            if (!resolveSchema(*p.sourceSubQuery, inner)) return false;
+            s = InferSchemaFromPlan(inner, *p.sourceSubQuery);
+            return true;
+        }
+        err = "Invalid plan source";
+        return false;
+    };
+
+    TableSchema sourceSchema;
+    if (!resolveSchema(plan, sourceSchema)) return false;
+
+    return Select(datPath, dbfPath, sourceSchema, plan, out, err);
+}
+
 static bool GetFieldValueForOrder(const TableSchema& schema, const Record& rec, const std::string& fieldName,
                                   const std::map<std::string, std::string>& aliasMap, std::string& outVal) {
     std::string name = fieldName;
@@ -77,20 +136,43 @@ static bool GetFieldValueForOrder(const TableSchema& schema, const Record& rec, 
     return GetFieldValue(schema, rec, name, outVal);
 }
 
-bool QueryService::MatchConditions(const TableSchema& schema, const Record& rec, const std::vector<Condition>& conds) const {
+bool QueryService::MatchConditions(const TableSchema& schema, const Record& rec, const std::vector<Condition>& conds, const std::string& datPath, const std::string& dbfPath) {
   auto matchSingle = [&](const Condition& cond) {
     if (cond.fieldName.empty()) return true;
     std::string val;
     if (!GetFieldValue(schema, rec, cond.fieldName, val)) return false;
     val = NormalizeValue(val);
-    std::string condVal = NormalizeValue(cond.value);
+    
+    std::string condVal;
+    
+    if (cond.isSubQuery && cond.subQueryPlan) {
+        std::vector<Record> subRows;
+        std::string subErr;
+        if (!ExecuteSubQuery(datPath, dbfPath, *cond.subQueryPlan, subRows, subErr)) return false;
+        
+        if (cond.op == "IN") {
+            for(const auto& r : subRows) {
+                if(!r.values.empty() && r.values[0] == val) return true;
+                try {
+                     double v1 = std::stod(val);
+                     double v2 = std::stod(r.values[0]);
+                     if (std::abs(v1-v2)<1e-9) return true;
+                } catch(...) {}
+            }
+            return false;
+        }
+        
+        if (subRows.empty() || subRows[0].values.empty()) return false;
+        condVal = subRows[0].values[0];
+    } else {
+        condVal = NormalizeValue(cond.value);
+    }
 
-    // numeric compare when both values look like numbers
     auto asNumber = [](const std::string& s, double& out) {
       try { size_t i=0; out = std::stod(s, &i); return i == s.size(); } catch (...) { return false; }
     };
 
-    if (cond.op == "IN") {
+    if (cond.op == "IN" && !cond.isSubQuery) {
         for (const auto& v : cond.values) {
            std::string nv = NormalizeValue(v);
            double valNum = 0, vNum = 0;
@@ -121,7 +203,6 @@ bool QueryService::MatchConditions(const TableSchema& schema, const Record& rec,
         if (cond.op == "<") return lv < rv;
         if (cond.op == "<=") return lv <= rv;
       }
-      // Fallback to string (dates)
       if (cond.op == ">") return val > condVal;
       if (cond.op == ">=") return val >= condVal;
       if (cond.op == "<") return val < condVal;
@@ -214,8 +295,13 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
   }
 
   if (!indexUsed) {
-    if (!engine_.ReadRecordsWithOffsets(datPath, schema, r1o, err)) return false;
-    for (const auto& p : r1o) r1.push_back(p.second);
+      if (plan.sourceSubQuery) {
+          if (!ExecuteSubQuery(datPath, dbfPath, *plan.sourceSubQuery, r1, err)) return false;
+          indexUsed = true;
+      } else {
+          if (!engine_.ReadRecordsWithOffsets(datPath, schema, r1o, err)) return false;
+          for (const auto& p : r1o) r1.push_back(p.second);
+      }
   }
 
   bool isJoin = !plan.joinTable.empty();
@@ -268,7 +354,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
           for (const auto& p : r1o) {
               const auto& r = p.second;
               if (!r.valid) continue;
-              if (!MatchConditions(combinedSchema, r, plan.conditions)) continue;
+              if (!MatchConditions(combinedSchema, r, plan.conditions, datPath, dbfPath)) continue;
               RID rid{schema.tableName, static_cast<uint64_t>(p.first)};
               if (!trackShared(rid, err)) return false;
               matched.push_back(r);
@@ -276,7 +362,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
       } else {
           for (const auto& r : r1) {
               if (!r.valid) continue;
-              if (!MatchConditions(combinedSchema, r, plan.conditions)) continue;
+              if (!MatchConditions(combinedSchema, r, plan.conditions, datPath, dbfPath)) continue;
               matched.push_back(r);
           }
       }
@@ -564,7 +650,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
               if (!row2.valid) continue;
               Record cur = createCombined(row1, row2);
               if (matchesVar(cur)) {
-                  if (MatchConditions(combinedSchema, cur, plan.conditions)) {
+                  if (MatchConditions(combinedSchema, cur, plan.conditions, datPath, dbfPath)) {
                        matched = true;
                        if (lock_manager && txn) {
                            if (!r1o.empty() && i < r1o.size()) {
@@ -582,7 +668,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
           }
           if (plan.joinType == JoinType::kLeft && !matched) {
                Record cur = createCombined(row1, nullR2);
-               if (MatchConditions(combinedSchema, cur, plan.conditions)) {
+               if (MatchConditions(combinedSchema, cur, plan.conditions, datPath, dbfPath)) {
                     if (lock_manager && txn) {
                         if (!r1o.empty() && i < r1o.size()) {
                             RID rid1{schema.tableName, static_cast<uint64_t>(r1o[i].first)};
@@ -604,7 +690,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
               if (!row1.valid) continue;
               Record cur = createCombined(row1, row2);
               if (matchesVar(cur)) {
-                  if (MatchConditions(combinedSchema, cur, plan.conditions)) {
+                  if (MatchConditions(combinedSchema, cur, plan.conditions, datPath, dbfPath)) {
                        matched = true;
                        if (lock_manager && txn) {
                            if (!r1o.empty() && i < r1o.size()) {
@@ -622,7 +708,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
           }
           if (!matched) {
                Record cur = createCombined(nullR1, row2);
-               if (MatchConditions(combinedSchema, cur, plan.conditions)) {
+               if (MatchConditions(combinedSchema, cur, plan.conditions, datPath, dbfPath)) {
                     if (lock_manager && txn) {
                         if (j < r2o.size()) {
                             RID rid2{schema2.tableName, static_cast<uint64_t>(r2o[j].first)};

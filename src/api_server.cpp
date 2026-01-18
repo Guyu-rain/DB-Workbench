@@ -577,6 +577,22 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
             lastResultBody = "{\"ok\":true,\"message\":\"Switched to database " + JsonEscape(db) + "\"}";
             continue;
         }
+
+        if (cmd.type == CommandType::kBackup) {
+            if (user != "admin") {
+                resp.status = 403;
+                resp.body = Error("Permission denied: Only admin can backup database");
+                return;
+            }
+            if (!engine_.BackupDatabase(cmd.dbName, cmd.backupPath, err)) {
+                resp.status = 500;
+                resp.body = Error("Backup failed: " + err);
+                return;
+            }
+            lastStatus = 200;
+            lastResultBody = "{\"ok\":true,\"message\":\"Database " + JsonEscape(cmd.dbName) + " backed up to " + JsonEscape(cmd.backupPath) + "\"}";
+            continue;
+        }
         
         // --- DCL Commands ---
         if (cmd.type == CommandType::kCreateUser) {

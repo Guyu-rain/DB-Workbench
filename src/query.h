@@ -16,6 +16,9 @@ class QueryService {
 
  private:
   StorageEngine& engine_;
-  bool MatchConditions(const TableSchema& schema, const Record& rec, const std::vector<Condition>& conds) const;
+  bool MatchConditions(const TableSchema& schema, const Record& rec, const std::vector<Condition>& conds, const std::string& datPath, const std::string& dbfPath);
   Record Project(const TableSchema& schema, const Record& rec, const std::vector<std::string>& projection) const;
+  
+  // Helper to execute subquery
+  bool ExecuteSubQuery(const std::string& datPath, const std::string& dbfPath, const QueryPlan& plan, std::vector<Record>& out, std::string& err);
 };

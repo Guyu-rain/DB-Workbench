@@ -3,6 +3,7 @@
 #include <cctype>
 #include <sstream>
 #include <cstring>
+#include <memory>
 
 
 namespace {
@@ -28,25 +29,89 @@ std::string Trim(std::string s) {
   return s;
 }
 
+// Helper to find matching closing parenthesis safely
+size_t FindMatchingClosingParen(const std::string& s, size_t openPos) {
+    int depth = 0;
+    for (size_t i = openPos; i < s.length(); ++i) {
+        if (s[i] == '(') depth++;
+        else if (s[i] == ')') {
+            depth--;
+            if (depth == 0) return i;
+        }
+    }
+    return std::string::npos;
+}
+
+// Helper to try parsing a subquery string e.g. "(SELECT ...)"
+// Returns nullptr if not a valid subquery
+std::shared_ptr<QueryPlan> ParseSubQueryValues(std::string content) {
+    content = Trim(content);
+    if (content.size() < 2 || content.front() != '(' || content.back() != ')') {
+        return nullptr;
+    }
+    
+    // Check if it looks like a SELECT
+    std::string inner = content.substr(1, content.size()-2); // strip outer parens
+    std::string up = ToUpper(inner);
+    if (up.find("SELECT") == 0 || up.find(" SELECT") == 0) {
+         Parser p;
+         std::string err;
+         ParsedCommand cmd = p.Parse(inner, err);
+         if (err.empty() && cmd.type == CommandType::kSelect) {
+             auto plan = std::make_shared<QueryPlan>(cmd.query);
+             // Ensure sourceTable is populated if parsing set tableName
+             if (plan->sourceTable.empty()) plan->sourceTable = cmd.tableName;
+             return plan;
+         }
+    }
+    return nullptr;
+}
+
+// Helper to find op position ignoring parentheses
+size_t FindOp(const std::string& upPart, const std::string& op, size_t startPos = 0) {
+    int depth = 0;
+    for (size_t i = startPos; i < upPart.size(); ++i) {
+        if (upPart[i] == '(') {
+            depth++;
+        } else if (upPart[i] == ')') {
+            if (depth > 0) depth--;
+        } else if (depth == 0) {
+            // Check op match
+            if (i + op.size() <= upPart.size()) {
+                if (upPart.substr(i, op.size()) == op) return i;
+            }
+        }
+    }
+    return std::string::npos;
+}
+
 std::vector<Condition> ParseWhereClause(const std::string& whereClause) {
     std::vector<Condition> conditions;
     if (whereClause.empty()) return conditions;
 
-    // Split by " AND " (case insensitive)
+    // Split by " AND " respecting parentheses
     std::vector<std::string> parts;
     std::string text = whereClause;
     std::string upper = ToUpper(text);
     
     size_t pos = 0;
-    while (true) {
-        size_t nextAnd = upper.find(" AND ", pos);
-        if (nextAnd == std::string::npos) {
-            parts.push_back(text.substr(pos));
-            break;
+    size_t lastPos = 0;
+    int depth = 0;
+    
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '(') depth++;
+        else if (text[i] == ')') depth--;
+        
+        // check for AND at top level
+        if (depth == 0 && i + 5 <= text.size()) {
+             if (upper.substr(i, 5) == " AND ") {
+                 parts.push_back(text.substr(lastPos, i - lastPos));
+                 i += 4; // skip " AND "
+                 lastPos = i + 1;
+             }
         }
-        parts.push_back(text.substr(pos, nextAnd - pos));
-        pos = nextAnd + 5;
     }
+    parts.push_back(text.substr(lastPos));
 
     for (const auto& rawPart : parts) {
         std::string part = Trim(rawPart);
@@ -54,11 +119,12 @@ std::vector<Condition> ParseWhereClause(const std::string& whereClause) {
         std::string upPart = ToUpper(part);
 
         // Check IN
-        size_t inPos = upPart.find(" IN ");
+        size_t inPos = FindOp(upPart, " IN "); // Use the safe finder
+        
         if (inPos == std::string::npos) {
-             // Try check IN(
-             size_t inParen = upPart.find(" IN(");
-             if (inParen != std::string::npos) inPos = inParen;
+             // Try check IN( -- handled by FindOp logic? " IN(" contains " IN"?? No.
+             // " IN " requires spaces.
+             inPos = FindOp(upPart, " IN(");
         }
 
         if (inPos != std::string::npos) {
@@ -67,16 +133,26 @@ std::vector<Condition> ParseWhereClause(const std::string& whereClause) {
              c.op = "IN";
              
              size_t parenL = part.find('(', inPos);
-             size_t parenR = part.rfind(')');
+             size_t parenR = FindMatchingClosingParen(part, parenL);
+             
              if (parenL != std::string::npos && parenR != std::string::npos && parenR > parenL) {
-                 std::string valList = part.substr(parenL + 1, parenR - parenL - 1);
-                 auto vals = Split(valList, ',');
-                 for(auto& v : vals) {
-                     std::string tv = Trim(v);
-                     if(tv.size() >= 2 && tv.front()=='\'' && tv.back()=='\'') tv = tv.substr(1, tv.size()-2);
-                     c.values.push_back(tv);
+                 std::string valContent = part.substr(parenL, parenR - parenL + 1); // keep parens for subquery check
+                 
+                 // Check if subquery
+                 auto sq = ParseSubQueryValues(valContent);
+                 if (sq) {
+                     c.isSubQuery = true;
+                     c.subQueryPlan = sq;
+                 } else {
+                     std::string valList = valContent.substr(1, valContent.size()-2);
+                     auto vals = Split(valList, ',');
+                     for(auto& v : vals) {
+                         std::string tv = Trim(v);
+                         if(tv.size() >= 2 && tv.front()=='\'' && tv.back()=='\'') tv = tv.substr(1, tv.size()-2);
+                         c.values.push_back(tv);
+                     }
+                     c.value = valList; 
                  }
-                 c.value = valList; 
              }
              conditions.push_back(c);
              continue;
@@ -86,15 +162,33 @@ std::vector<Condition> ParseWhereClause(const std::string& whereClause) {
         std::vector<std::string> ops = { "<=", ">=", "!=", "=", "<", ">", " CONTAINS " }; 
         bool found = false;
         for (const auto& op : ops) {
-            size_t p = upPart.find(op);
+            size_t p = FindOp(upPart, op); // USE SAFE FIND
+            
             if (p != std::string::npos) {
                 Condition c;
                 c.fieldName = Trim(part.substr(0, p));
                 c.op = Trim(op);
-                c.value = Trim(part.substr(p + op.length()));
-                if (c.value.size() >= 2 && c.value.front() == '\'' && c.value.back() == '\'') {
+                
+                std::string rhs = Trim(part.substr(p + op.length()));
+                
+                // Check subquery on RHS
+                if (rhs.size() >= 2 && rhs.front() == '(' && rhs.back() == ')') {
+                    auto sq = ParseSubQueryValues(rhs);
+                    if (sq) {
+                        c.isSubQuery = true;
+                        c.subQueryPlan = sq;
+                        c.value = "SUBQUERY"; // Placeholder
+                    } else {
+                        c.value = rhs;
+                    }
+                } else {
+                    c.value = rhs;
+                }
+
+                if (!c.isSubQuery && c.value.size() >= 2 && c.value.front() == '\'' && c.value.back() == '\'') {
                     c.value = c.value.substr(1, c.value.size() - 2);
                 }
+                
                 conditions.push_back(c);
                 found = true;
                 break;
@@ -170,6 +264,13 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
 
   // Normalize: Trim and replace internal whitespace with spaces to handle newlines
   std::string sql = Trim(noComment);
+  
+  // Remove trailing semicolon if any
+  if (!sql.empty() && sql.back() == ';') {
+      sql.pop_back();
+      sql = Trim(sql);
+  }
+
   for (char &c : sql) {
       if (std::isspace(static_cast<unsigned char>(c))) c = ' ';
   }
@@ -227,6 +328,26 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
       cmd.dbName = Trim(namePart);
       if (cmd.dbName.empty()) {
           err = "Database name is required";
+      }
+      return cmd;
+  }
+  
+  // BACKUP DATABASE dbName TO 'path'
+  if (upper.find("BACKUP DATABASE") == 0) {
+      cmd.type = CommandType::kBackup;
+      std::string rest = Trim(sql.substr(strlen("BACKUP DATABASE")));
+      
+      auto toPos = ToUpper(rest).find(" TO ");
+      if (toPos == std::string::npos) {
+          err = "Syntax error: expected TO";
+          return cmd;
+      }
+      
+      cmd.dbName = Trim(rest.substr(0, toPos));
+      cmd.backupPath = Trim(TrimQuotes(Trim(rest.substr(toPos + 4))));
+      
+      if (cmd.dbName.empty() || cmd.backupPath.empty()) {
+          err = "Database name and path required";
       }
       return cmd;
   }
@@ -919,19 +1040,50 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         
         // T1 Alias
         {
-             std::string upT1 = ToUpper(t1Clause);
-             size_t asPos = upT1.find(" AS ");
-             if (asPos != std::string::npos) {
-                 cmd.tableName = Trim(t1Clause.substr(0, asPos));
-                 cmd.query.tableAlias = Trim(t1Clause.substr(asPos + 4));
-             } else {
-                 size_t sp = t1Clause.rfind(' ');
-                 if (sp != std::string::npos) {
-                     cmd.tableName = Trim(t1Clause.substr(0, sp));
-                     cmd.query.tableAlias = Trim(t1Clause.substr(sp + 1));
-                 } else {
-                     cmd.tableName = t1Clause;
+             // Check for Subquery: (SELECT ... ) [AS Alias]
+             bool isSub = false;
+             if (t1Clause.size() > 2 && t1Clause.front() == '(') {
+                 size_t closeP = FindMatchingClosingParen(t1Clause, 0);
+                 if (closeP != std::string::npos) {
+                     std::string inner = t1Clause.substr(0, closeP + 1);
+                     auto sq = ParseSubQueryValues(inner);
+                     if (sq) {
+                        isSub = true;
+                        cmd.query.sourceSubQuery = sq;
+                        cmd.tableName = ""; // No physical table
+                        
+                        // Parse Alias after closeP
+                        std::string remainder = Trim(t1Clause.substr(closeP + 1));
+                        if (!remainder.empty()) {
+                            std::string upRem = ToUpper(remainder);
+                            if (upRem.find("AS ") == 0) {
+                                cmd.query.sourceAlias = Trim(remainder.substr(3));
+                            } else {
+                                cmd.query.sourceAlias = remainder;
+                            }
+                            cmd.query.tableAlias = cmd.query.sourceAlias; 
+                        }
+                     }
                  }
+             }
+
+             if (!isSub) {
+                 std::string upT1 = ToUpper(t1Clause);
+                 size_t asPos = upT1.find(" AS ");
+                 if (asPos != std::string::npos) {
+                     cmd.tableName = Trim(t1Clause.substr(0, asPos));
+                     cmd.query.tableAlias = Trim(t1Clause.substr(asPos + 4));
+                 } else {
+                     size_t sp = t1Clause.rfind(' ');
+                     if (sp != std::string::npos) {
+                         cmd.tableName = Trim(t1Clause.substr(0, sp));
+                         cmd.query.tableAlias = Trim(t1Clause.substr(sp + 1));
+                     } else {
+                         cmd.tableName = t1Clause;
+                     }
+                 }
+                 cmd.query.sourceTable = cmd.tableName; // Ensure QueryPlan has source table info
+                 cmd.query.sourceAlias = cmd.query.tableAlias;
              }
         }
 

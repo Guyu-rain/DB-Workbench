@@ -1,27 +1,108 @@
-# ===== Visual Studio =====
+############################################################
+# Visual Studio / MSVC
+############################################################
+
+# Visual Studio working files
 .vs/
 *.user
 *.suo
+*.userosscache
+*.sln.docstates
+
+# IntelliSense / PCH / cache
+ipch/
+*.ipch
 *.VC.db
 *.VC.opendb
+.vscode/.browse.c_cpp.db
+.vscode/.browse.c_cpp.db*
 
-# ===== Build Output =====
+############################################################
+# Build output (DO NOT COMMIT)
+############################################################
+
+# MSVC
 Debug/
 Release/
 x64/
 x86/
-out/
-build/
+Win32/
+ARM/
+ARM64/
 
-# ===== CMake =====
+# CMake / generic build dirs
+build/
+out/
+cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
+Makefile
 
-# ===== Logs & Temp =====
+############################################################
+# Binaries / objects
+############################################################
+
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.obj
+*.o
+*.a
+*.so
+
+############################################################
+# Logs / runtime generated data
+############################################################
+
 *.log
 *.tmp
+*.bak
+*.swp
 
-# ===== OS =====
+############################################################
+# OS generated files
+############################################################
+
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+############################################################
+# Editor / IDE settings
+############################################################
+
+# VSCode (可按需放开某些配置)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+############################################################
+# Database / runtime artifacts (DBMS 特别重要)
+############################################################
+
+# local database files
+*.db
+*.dat
+*.idx
+*.wal
+*.logdb
+*.tmpdb
+
+# test data / runtime output
+data/
+runtime/
+tmp/
+
+############################################################
+# Archives
+############################################################
+
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz

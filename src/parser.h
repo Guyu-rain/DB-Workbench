@@ -28,7 +28,8 @@ enum class CommandType {
   kCreateUser,
   kDropUser,
   kGrant,
-  kRevoke
+  kRevoke,
+  kBackup
 };
 
 enum class AlterOperation {
@@ -54,6 +55,7 @@ struct ParsedCommand {
   std::vector<Condition> conditions;  // WHERE clause (UPDATE/DELETE)
   std::vector<std::pair<std::string, std::string>> assignments;  // UPDATE set list
   std::string newName;                // for RENAME
+  std::string backupPath;             // for BACKUP
   
   std::string username;
   std::string password;

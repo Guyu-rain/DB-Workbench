@@ -5,7 +5,50 @@
 // ******* ������������ͷ�ļ� *******
 #include <map>          // �ṩ std::map
 #include <vector>       // �ṩ std::vector����Ȼ storage_engine.h �Ѱ�������������ʽ��������ȫ��
-#include <string>       // �ṩ std::string��ͬ�ϣ�
+#include <string>
+#include <filesystem>
+namespace fs = std::filesystem;       // �ṩ std::string��ͬ�ϣ�
+
+bool StorageEngine::BackupDatabase(const std::string& dbName, const std::string& destPath, std::string& err) {
+    namespace fs = std::filesystem;
+    try {
+        if (!fs::exists(destPath)) {
+            if (!fs::create_directories(destPath)) {
+                err = "Failed to create directory: " + destPath;
+                return false;
+            }
+        }
+    } catch (const fs::filesystem_error& e) {
+        err = "Filesystem error: " + std::string(e.what());
+        return false;
+    }
+
+    // Identify files to copy: dbName.*
+    // Also indexes for tables in this DB: dbName.Table.*
+    // WAL: dbName.wal
+    // Using directory iteration
+    
+    try {
+        fs::path currentDir = fs::current_path(); // Assumes data files are in CWD
+        // If data files are elsewhere, we need that path. 
+        // Based on CreateDatabase/CreateDatabase usage, it uses simple filenames, so CWD.
+        
+        for (const auto& entry : fs::directory_iterator(currentDir)) {
+            if (entry.is_regular_file()) {
+                std::string fname = entry.path().filename().string();
+                // Check prefix
+                if (fname.find(dbName + ".") == 0) {
+                     fs::copy_file(entry.path(), fs::path(destPath) / fname, fs::copy_options::overwrite_existing);
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        err = "Backup failed: " + std::string(e.what());
+        return false;
+    }
+    
+    return true;
+}
 
 namespace {
     constexpr char kTableSep = '~';
@@ -25,7 +68,7 @@ bool StorageEngine::CreateDatabase(const std::string& dbName, std::string& err) 
     std::string dbf = dbName + ".dbf";
     std::string dat = dbName + ".dat";
 
-    // ����Ƿ��Ѵ���?
+    // ����Ƿ��Ѵ���?
     {
         std::ifstream ifs(dbf, std::ios::binary);
         if (ifs.good()) {

@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <memory>
 
 // Field definition
 struct Field {
@@ -31,12 +32,19 @@ struct Record {
   std::vector<std::string> values;   // values aligned with fields
 };
 
+// Loop dependency resolution
+struct QueryPlan;
+
 // Condition (simple equality/contains)
 struct Condition {
   std::string fieldName;
-  std::string op;       // supported: "=", "!=", "CONTAINS", "IN"
+  std::string op;       // supported: "=", "!=", "CONTAINS", "IN", ">", ">=", "<", "<="
   std::string value;
   std::vector<std::string> values; // for IN operator
+  
+  // Subquery support
+  bool isSubQuery = false;
+  std::shared_ptr<QueryPlan> subQueryPlan;
 };
 
 struct AggregateExpr {
@@ -72,4 +80,9 @@ struct QueryPlan {
   
   std::string tableAlias;      // Alias for main table
   std::string joinTableAlias;  // Alias for joined table
+
+  // Subquery support for FROM clause
+  std::string sourceTable;     // Name of the table if plain select
+  std::shared_ptr<QueryPlan> sourceSubQuery; // Check if not null, then it is a subquery
+  std::string sourceAlias;     // Alias for the subquery derived table
 };
