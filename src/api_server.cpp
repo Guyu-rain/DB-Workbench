@@ -658,6 +658,20 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
             continue;
         }
 
+        if (cmd.type == CommandType::kCheckpoint) {
+            if (session.current_txn) { resp.status=400; resp.body=Error("CHECKPOINT not allowed in active transaction"); return; }
+            log_.SetDbName(currentDbName_);
+            LogRecord rec;
+            rec.txn_id = 0;
+            rec.type = LogType::CHECKPOINT;
+            LSN lsn = log_.Append(rec, err);
+            if (lsn == 0) { resp.status=500; resp.body=Error(err); return; }
+            if (!log_.Flush(lsn, err)) { resp.status=500; resp.body=Error(err); return; }
+            if (!log_.TruncateWithBackup(err)) { resp.status=500; resp.body=Error(err); return; }
+            lastStatus = 200; lastResultBody = "{\"ok\":true,\"message\":\"Checkpoint created\"}";
+            continue;
+        }
+
         if (cmd.type == CommandType::kUseDatabase) {
            // Should check permission? "USE" generally allowed if you can connect? 
            // Let's assume yes.
@@ -745,6 +759,7 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
             case CommandType::kCreate: accessNeeded="CREATE"; break; // Table?
             case CommandType::kDrop:   accessNeeded="DROP"; break;
             case CommandType::kAlter:  accessNeeded="ALTER"; break; // Custom priv
+            case CommandType::kCheckpoint: accessNeeded="CREATE"; break;
             case CommandType::kCreateIndex: accessNeeded="INDEX"; break;
             case CommandType::kDropIndex: accessNeeded="INDEX"; break;
             // ...
