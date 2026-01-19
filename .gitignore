@@ -1,0 +1,49 @@
+# Build outputs
+/build/
+/build-*/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+*.cmake
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+*.sdf
+*.ipch
+*.VC.VC.opendb
+
+# MSBuild/Visual Studio generated
+Debug/
+Release/
+MinSizeRel/
+RelWithDebInfo/
+
+# Windows binaries
+*.exe
+*.dll
+*.pdb
+*.lib
+*.obj
+*.ilk
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
