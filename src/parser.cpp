@@ -89,7 +89,7 @@ std::vector<Condition> ParseWhereClause(const std::string& whereClause) {
     std::vector<Condition> conditions;
     if (whereClause.empty()) return conditions;
 
-    // Split by " AND " respecting parentheses
+    // Split by " AND " respecting parentheses and BETWEEN clauses
     std::vector<std::string> parts;
     std::string text = whereClause;
     std::string upper = ToUpper(text);
@@ -97,17 +97,31 @@ std::vector<Condition> ParseWhereClause(const std::string& whereClause) {
     size_t pos = 0;
     size_t lastPos = 0;
     int depth = 0;
+    bool inBetween = false;  // Track if we're inside a BETWEEN clause
     
     for (size_t i = 0; i < text.size(); ++i) {
         if (text[i] == '(') depth++;
         else if (text[i] == ')') depth--;
         
+        // Check for BETWEEN keyword at depth 0
+        if (depth == 0 && i + 8 <= text.size()) {
+            if (upper.substr(i, 8) == " BETWEEN") {
+                inBetween = true;
+            }
+        }
+        
         // check for AND at top level
         if (depth == 0 && i + 5 <= text.size()) {
              if (upper.substr(i, 5) == " AND ") {
-                 parts.push_back(text.substr(lastPos, i - lastPos));
-                 i += 4; // skip " AND "
-                 lastPos = i + 1;
+                 // If we're in a BETWEEN clause, this AND belongs to BETWEEN
+                 if (inBetween) {
+                     inBetween = false;  // This AND closes the BETWEEN clause
+                 } else {
+                     // This is a condition separator
+                     parts.push_back(text.substr(lastPos, i - lastPos));
+                     i += 4; // skip " AND "
+                     lastPos = i + 1;
+                 }
              }
         }
     }
@@ -117,6 +131,109 @@ std::vector<Condition> ParseWhereClause(const std::string& whereClause) {
         std::string part = Trim(rawPart);
         if (part.empty()) continue;
         std::string upPart = ToUpper(part);
+
+        // Check BETWEEN
+        size_t betweenPos = FindOp(upPart, " BETWEEN ");
+        if (betweenPos != std::string::npos) {
+            Condition c;
+            c.fieldName = Trim(part.substr(0, betweenPos));
+            c.op = "BETWEEN";
+            
+            std::string rangeStr = Trim(part.substr(betweenPos + 9)); // Skip " BETWEEN "
+            std::string upRange = ToUpper(rangeStr);
+            
+            // Find " AND " in the range part
+            size_t andPos = upRange.find(" AND ");
+            if (andPos != std::string::npos) {
+                std::string minVal = Trim(rangeStr.substr(0, andPos));
+                std::string maxVal = Trim(rangeStr.substr(andPos + 5));
+                
+                // Remove quotes if present
+                if (minVal.size() >= 2 && minVal.front() == '\'' && minVal.back() == '\'') {
+                    minVal = minVal.substr(1, minVal.size() - 2);
+                }
+                if (maxVal.size() >= 2 && maxVal.front() == '\'' && maxVal.back() == '\'') {
+                    maxVal = maxVal.substr(1, maxVal.size() - 2);
+                }
+                
+                c.values.push_back(minVal);
+                c.values.push_back(maxVal);
+            }
+            conditions.push_back(c);
+            continue;
+        }
+
+        // Check NOT LIKE (must check before LIKE)
+        size_t notLikePos = FindOp(upPart, " NOT LIKE ");
+        if (notLikePos != std::string::npos) {
+            Condition c;
+            c.fieldName = Trim(part.substr(0, notLikePos));
+            c.op = "NOT LIKE";
+            std::string pattern = Trim(part.substr(notLikePos + 10)); // Skip " NOT LIKE "
+            
+            // Remove quotes if present
+            if (pattern.size() >= 2 && pattern.front() == '\'' && pattern.back() == '\'') {
+                pattern = pattern.substr(1, pattern.size() - 2);
+            }
+            c.value = pattern;
+            conditions.push_back(c);
+            continue;
+        }
+
+        // Check NOT EXISTS
+        size_t notExistsPos = FindOp(upPart, "NOT EXISTS ");
+        if (notExistsPos == 0) {  // Must be at the start
+            Condition c;
+            c.op = "NOT EXISTS";
+            c.fieldName = "";  // EXISTS doesn't have a field
+            std::string subPart = Trim(part.substr(11)); // Skip "NOT EXISTS "
+            
+            if (subPart.size() >= 2 && subPart.front() == '(' && subPart.back() == ')') {
+                auto sq = ParseSubQueryValues(subPart);
+                if (sq) {
+                    c.isSubQuery = true;
+                    c.subQueryPlan = sq;
+                    conditions.push_back(c);
+                    continue;
+                }
+            }
+        }
+
+        // Check EXISTS
+        size_t existsPos = FindOp(upPart, "EXISTS ");
+        if (existsPos == 0) {  // Must be at the start
+            Condition c;
+            c.op = "EXISTS";
+            c.fieldName = "";  // EXISTS doesn't have a field
+            std::string subPart = Trim(part.substr(7)); // Skip "EXISTS "
+            
+            if (subPart.size() >= 2 && subPart.front() == '(' && subPart.back() == ')') {
+                auto sq = ParseSubQueryValues(subPart);
+                if (sq) {
+                    c.isSubQuery = true;
+                    c.subQueryPlan = sq;
+                    conditions.push_back(c);
+                    continue;
+                }
+            }
+        }
+
+        // Check LIKE
+        size_t likePos = FindOp(upPart, " LIKE ");
+        if (likePos != std::string::npos) {
+            Condition c;
+            c.fieldName = Trim(part.substr(0, likePos));
+            c.op = "LIKE";
+            std::string pattern = Trim(part.substr(likePos + 6)); // Skip " LIKE "
+            
+            // Remove quotes if present
+            if (pattern.size() >= 2 && pattern.front() == '\'' && pattern.back() == '\'') {
+                pattern = pattern.substr(1, pattern.size() - 2);
+            }
+            c.value = pattern;
+            conditions.push_back(c);
+            continue;
+        }
 
         // Check IN
         size_t inPos = FindOp(upPart, " IN "); // Use the safe finder
@@ -957,7 +1074,10 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
 
             // Detect aggregate function: FUNC(expr)
             bool isAgg = false;
+            bool isSubQ = false;
             AggregateExpr agg;
+            std::shared_ptr<QueryPlan> subQ;
+            
             {
                 size_t lp = expr.find('(');
                 size_t rp = expr.rfind(')');
@@ -972,14 +1092,29 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
                     }
                 }
             }
+            
+            // Check for subquery in SELECT list
+            if (!isAgg && expr.size() >= 2 && expr.front() == '(' && expr.back() == ')') {
+                auto sq = ParseSubQueryValues(expr);
+                if (sq) {
+                    isSubQ = true;
+                    subQ = sq;
+                }
+            }
 
             SelectExpr sel;
             sel.isAggregate = isAgg;
             sel.alias = alias;
+            sel.isSubQuery = isSubQ;
+            sel.subQueryPlan = subQ;
+            
             if (isAgg) {
                 sel.agg = agg;
                 sel.field = expr;
                 cmd.query.aggregates.push_back(agg);
+            } else if (isSubQ) {
+                sel.field = expr;
+                // Don't add to projection for subquery
             } else {
                 sel.field = expr;
                 cmd.query.projection.push_back(expr);
@@ -995,6 +1130,7 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         size_t joinPos = std::string::npos;
         size_t wherePos = upperSql.find(" WHERE ", startRest);
         size_t groupPos = upperSql.find(" GROUP BY ", startRest);
+        size_t havingPos = upperSql.find(" HAVING ", startRest);
         size_t orderPos = upperSql.find(" ORDER BY ", startRest);
         size_t bareJoin = std::string::npos;
 
@@ -1008,6 +1144,7 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
             if (pos == std::string::npos) return false;
             if (wherePos != std::string::npos && pos > wherePos) return false;
             if (groupPos != std::string::npos && pos > groupPos) return false;
+            if (havingPos != std::string::npos && pos > havingPos) return false;
             if (orderPos != std::string::npos && pos > orderPos) return false;
             return true;
         };
@@ -1035,6 +1172,7 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         if (joinPos != std::string::npos) t1End = joinPos;
         if (wherePos != std::string::npos && wherePos < t1End) t1End = wherePos;
         if (groupPos != std::string::npos && groupPos < t1End) t1End = groupPos;
+        if (havingPos != std::string::npos && havingPos < t1End) t1End = havingPos;
         if (orderPos != std::string::npos && orderPos < t1End) t1End = orderPos;
         std::string t1Clause = Trim(sql.substr(startRest, t1End - startRest));
         
@@ -1062,6 +1200,10 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
                                 cmd.query.sourceAlias = remainder;
                             }
                             cmd.query.tableAlias = cmd.query.sourceAlias; 
+                        } else {
+                            // FROM subquery must have an alias (SQL standard requirement)
+                            err = "Subquery in FROM clause must have an alias";
+                            return cmd;
                         }
                      }
                  }
@@ -1094,6 +1236,7 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
             if (onPos == std::string::npos) { err = "JOIN missing ON"; return cmd; }
             if (wherePos != std::string::npos && onPos > wherePos) { err = "ON clause after WHERE?"; return cmd; }
             if (groupPos != std::string::npos && onPos > groupPos) { err = "ON clause after GROUP BY?"; return cmd; }
+            if (havingPos != std::string::npos && onPos > havingPos) { err = "ON clause after HAVING?"; return cmd; }
             if (orderPos != std::string::npos && onPos > orderPos) { err = "ON clause after ORDER BY?"; return cmd; }
 
             std::string t2Clause = Trim(sql.substr(startT2, onPos - startT2));
@@ -1119,6 +1262,7 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
             size_t onEnd = sql.size();
             if (wherePos != std::string::npos && wherePos < onEnd) onEnd = wherePos;
             if (groupPos != std::string::npos && groupPos < onEnd) onEnd = groupPos;
+            if (havingPos != std::string::npos && havingPos < onEnd) onEnd = havingPos;
             if (orderPos != std::string::npos && orderPos < onEnd) onEnd = orderPos;
             std::string onCond = Trim(sql.substr(onPos + 4, onEnd - (onPos + 4)));
             auto eq = onCond.find('=');
@@ -1134,6 +1278,7 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         if (wherePos != std::string::npos) {
           size_t whereEnd = sql.size();
           if (groupPos != std::string::npos && groupPos > wherePos) whereEnd = groupPos;
+          if (havingPos != std::string::npos && havingPos > wherePos) whereEnd = havingPos;
           if (orderPos != std::string::npos && orderPos > wherePos) whereEnd = orderPos;
           std::string condPart = sql.substr(wherePos + 7, whereEnd - (wherePos + 7));
           cmd.query.conditions = ParseWhereClause(condPart);
@@ -1142,6 +1287,7 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         // 4. GROUP BY content
         if (groupPos != std::string::npos) {
             size_t groupEnd = sql.size();
+            if (havingPos != std::string::npos && havingPos > groupPos) groupEnd = havingPos;
             if (orderPos != std::string::npos && orderPos > groupPos) groupEnd = orderPos;
             std::string groupPart = Trim(sql.substr(groupPos + 10, groupEnd - (groupPos + 10)));
             auto groupFields = Split(groupPart, ',');
@@ -1149,6 +1295,14 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
                 std::string part = Trim(raw);
                 if (!part.empty()) cmd.query.groupBy.push_back(part);
             }
+        }
+
+        // 4.5. HAVING content
+        if (havingPos != std::string::npos) {
+            size_t havingEnd = sql.size();
+            if (orderPos != std::string::npos && orderPos > havingPos) havingEnd = orderPos;
+            std::string havingPart = Trim(sql.substr(havingPos + 8, havingEnd - (havingPos + 8)));
+            cmd.query.havingConditions = ParseWhereClause(havingPart);
         }
 
         // 5. ORDER BY content
