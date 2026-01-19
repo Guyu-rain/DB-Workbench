@@ -1,6 +1,6 @@
 CMakeFiles/dbms.dir/src/parser.cpp.o: \
-  /Users/guyuu/Desktop/DBMS/src/parser.cpp \
-  /Users/guyuu/Desktop/DBMS/src/parser.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/parser.cpp \
+  /Users/guyuu/Desktop/DB-Workbench/src/parser.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/string \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/max.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/comp.h \
@@ -752,7 +752,7 @@ CMakeFiles/dbms.dir/src/parser.cpp.o: \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/_types/_fsfilcnt_t.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/_types/_nl_item.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/cstdarg \
-  /Users/guyuu/Desktop/DBMS/src/db_types.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/db_types.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/sstream \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__ostream/basic_ostream.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__ostream/put_character_sequence.h \

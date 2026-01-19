@@ -1,6 +1,6 @@
 CMakeFiles/dbms.dir/src/txn/recovery.cpp.o: \
-  /Users/guyuu/Desktop/DBMS/src/txn/recovery.cpp \
-  /Users/guyuu/Desktop/DBMS/src/txn/recovery.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/recovery.cpp \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/recovery.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/string \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/max.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/comp.h \
@@ -662,7 +662,7 @@ CMakeFiles/dbms.dir/src/txn/recovery.cpp.o: \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/pstl.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/sample.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/bit \
-  /Users/guyuu/Desktop/DBMS/src/txn/txn_types.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/txn_types.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/vector \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__vector/comparison.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/lexicographical_compare_three_way.h \
@@ -753,7 +753,7 @@ CMakeFiles/dbms.dir/src/txn/recovery.cpp.o: \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/_types/_fsfilcnt_t.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/_types/_nl_item.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/cstdarg \
-  /Users/guyuu/Desktop/DBMS/src/txn/log_manager.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/log_manager.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/map \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/is_transparent.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__iterator/erase_if_container.h \
@@ -780,9 +780,9 @@ CMakeFiles/dbms.dir/src/txn/recovery.cpp.o: \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/default_searcher.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/not_fn.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/perfect_forward.h \
-  /Users/guyuu/Desktop/DBMS/src/txn/../storage_engine.h \
-  /Users/guyuu/Desktop/DBMS/src/txn/../db_types.h \
-  /Users/guyuu/Desktop/DBMS/src/txn/../path_utils.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/../storage_engine.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/../db_types.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/../path_utils.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/filesystem \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__filesystem/copy_options.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__filesystem/directory_entry.h \

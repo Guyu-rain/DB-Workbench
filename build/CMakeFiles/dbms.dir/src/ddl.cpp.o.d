@@ -1,5 +1,6 @@
-CMakeFiles/dbms.dir/src/ddl.cpp.o: /Users/guyuu/Desktop/DBMS/src/ddl.cpp \
-  /Users/guyuu/Desktop/DBMS/src/ddl.h \
+CMakeFiles/dbms.dir/src/ddl.cpp.o: \
+  /Users/guyuu/Desktop/DB-Workbench/src/ddl.cpp \
+  /Users/guyuu/Desktop/DB-Workbench/src/ddl.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/string \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/max.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/comp.h \
@@ -751,8 +752,8 @@ CMakeFiles/dbms.dir/src/ddl.cpp.o: /Users/guyuu/Desktop/DBMS/src/ddl.cpp \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/_types/_fsfilcnt_t.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/_types/_nl_item.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/cstdarg \
-  /Users/guyuu/Desktop/DBMS/src/db_types.h \
-  /Users/guyuu/Desktop/DBMS/src/storage_engine.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/db_types.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/storage_engine.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/map \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/is_transparent.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__iterator/erase_if_container.h \

@@ -1,6 +1,6 @@
 CMakeFiles/dbms.dir/src/http_server.cpp.o: \
-  /Users/guyuu/Desktop/DBMS/src/http_server.cpp \
-  /Users/guyuu/Desktop/DBMS/src/http_server.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/http_server.cpp \
+  /Users/guyuu/Desktop/DB-Workbench/src/http_server.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/functional \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__config \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__config_site \

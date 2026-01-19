@@ -1,6 +1,6 @@
 CMakeFiles/dbms.dir/src/auth.cpp.o: \
-  /Users/guyuu/Desktop/DBMS/src/auth.cpp \
-  /Users/guyuu/Desktop/DBMS/src/auth.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/auth.cpp \
+  /Users/guyuu/Desktop/DB-Workbench/src/auth.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/string \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/max.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/comp.h \
@@ -760,7 +760,7 @@ CMakeFiles/dbms.dir/src/auth.cpp.o: \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__iterator/erase_if_container.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__iterator/ranges_iterator_traits.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__node_handle \
-  /Users/guyuu/Desktop/DBMS/src/storage_engine.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/storage_engine.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/map \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__tree \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/functional \
@@ -779,10 +779,10 @@ CMakeFiles/dbms.dir/src/auth.cpp.o: \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/default_searcher.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/not_fn.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/perfect_forward.h \
-  /Users/guyuu/Desktop/DBMS/src/db_types.h \
-  /Users/guyuu/Desktop/DBMS/src/dml.h \
-  /Users/guyuu/Desktop/DBMS/src/txn/txn_types.h \
-  /Users/guyuu/Desktop/DBMS/src/ddl.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/db_types.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/dml.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/txn_types.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/ddl.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/iostream \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/istream \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__ostream/basic_ostream.h \
@@ -802,7 +802,7 @@ CMakeFiles/dbms.dir/src/auth.cpp.o: \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/chrono \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__chrono/file_clock.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/forward_list \
-  /Users/guyuu/Desktop/DBMS/src/path_utils.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/path_utils.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/filesystem \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__filesystem/copy_options.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__filesystem/directory_entry.h \

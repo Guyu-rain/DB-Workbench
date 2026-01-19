@@ -3,6 +3,7 @@
 #include <cctype>
 #include <string>
 #include <map>
+#include <unordered_set>
 #include "txn/log_manager.h"
 #include "txn/lock_manager.h"
 
@@ -26,6 +27,28 @@ void AddTouchedTable(Txn* txn, const std::string& table) {
   if (!txn) return;
   auto it = std::find(txn->touched_tables.begin(), txn->touched_tables.end(), table);
   if (it == txn->touched_tables.end()) txn->touched_tables.push_back(table);
+}
+
+std::string BuildCompositeKey(const Record& rec, const std::vector<size_t>& keyIdxs) {
+  std::string key;
+  for (size_t i = 0; i < keyIdxs.size(); ++i) {
+    if (i) key.push_back('\x1f');  // ASCII unit separator
+    const size_t idx = keyIdxs[i];
+    std::string val = (idx < rec.values.size()) ? NormalizeValue(rec.values[idx]) : "";
+    key += val;
+  }
+  return key;
+}
+
+std::string BuildKeyDisplay(const Record& rec, const std::vector<size_t>& keyIdxs) {
+  std::string out;
+  for (size_t i = 0; i < keyIdxs.size(); ++i) {
+    if (i) out += ", ";
+    const size_t idx = keyIdxs[i];
+    std::string val = (idx < rec.values.size()) ? NormalizeValue(rec.values[idx]) : "";
+    out += val;
+  }
+  return out;
 }
 }
 
@@ -112,6 +135,28 @@ bool DMLService::Insert(const std::string& datPath, const TableSchema& schema, c
   // Map field names to indices
   std::map<std::string, size_t> fieldMap;
   for(size_t i=0; i<schema.fields.size(); ++i) fieldMap[schema.fields[i].name] = i;
+
+  std::vector<size_t> keyIdxs;
+  for (size_t i = 0; i < schema.fields.size(); ++i) {
+    if (schema.fields[i].isKey) keyIdxs.push_back(i);
+  }
+  if (!keyIdxs.empty()) {
+    std::unordered_set<std::string> seen;
+    std::vector<Record> existing;
+    if (!engine_.ReadRecords(datPath, schema, existing, err)) return false;
+    for (const auto& r : existing) {
+      if (!r.valid) continue;
+      seen.insert(BuildCompositeKey(r, keyIdxs));
+    }
+    for (const auto& r : records) {
+      std::string key = BuildCompositeKey(r, keyIdxs);
+      if (seen.count(key)) {
+        err = "Duplicate entry '" + BuildKeyDisplay(r, keyIdxs) + "' for primary key";
+        return false;
+      }
+      seen.insert(key);
+    }
+  }
 
   if (txn && log) {
       for (const auto& r : records) {

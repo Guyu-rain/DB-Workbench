@@ -1,6 +1,6 @@
 CMakeFiles/dbms.dir/src/txn/lock_manager.cpp.o: \
-  /Users/guyuu/Desktop/DBMS/src/txn/lock_manager.cpp \
-  /Users/guyuu/Desktop/DBMS/src/txn/lock_manager.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/lock_manager.cpp \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/lock_manager.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/string \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/max.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/comp.h \
@@ -786,7 +786,7 @@ CMakeFiles/dbms.dir/src/txn/lock_manager.cpp.o: \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__stop_token/atomic_unique_lock.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__stop_token/intrusive_list_view.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__stop_token/stop_token.h \
-  /Users/guyuu/Desktop/DBMS/src/txn/txn_types.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/txn/txn_types.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/chrono \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__chrono/file_clock.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/forward_list \

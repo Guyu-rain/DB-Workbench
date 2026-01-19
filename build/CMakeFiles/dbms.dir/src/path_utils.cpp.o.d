@@ -1,6 +1,6 @@
 CMakeFiles/dbms.dir/src/path_utils.cpp.o: \
-  /Users/guyuu/Desktop/DBMS/src/path_utils.cpp \
-  /Users/guyuu/Desktop/DBMS/src/path_utils.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/path_utils.cpp \
+  /Users/guyuu/Desktop/DB-Workbench/src/path_utils.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/filesystem \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__config \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__config_site \

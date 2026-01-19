@@ -1,6 +1,6 @@
 CMakeFiles/dbms.dir/src/storage_engine_txn.cpp.o: \
-  /Users/guyuu/Desktop/DBMS/src/storage_engine_txn.cpp \
-  /Users/guyuu/Desktop/DBMS/src/storage_engine.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/storage_engine_txn.cpp \
+  /Users/guyuu/Desktop/DB-Workbench/src/storage_engine.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/string \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/max.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/comp.h \
@@ -778,7 +778,7 @@ CMakeFiles/dbms.dir/src/storage_engine_txn.cpp.o: \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/default_searcher.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/not_fn.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/perfect_forward.h \
-  /Users/guyuu/Desktop/DBMS/src/db_types.h \
+  /Users/guyuu/Desktop/DB-Workbench/src/db_types.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/fstream \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__filesystem/path.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/iomanip \
