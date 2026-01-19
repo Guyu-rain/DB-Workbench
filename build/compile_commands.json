@@ -1,0 +1,92 @@
+[
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/main.cpp.o -c /Users/guyuu/Desktop/DBMS/src/main.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/main.cpp",
+  "output": "CMakeFiles/dbms.dir/src/main.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/api_server.cpp.o -c /Users/guyuu/Desktop/DBMS/src/api_server.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/api_server.cpp",
+  "output": "CMakeFiles/dbms.dir/src/api_server.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/auth.cpp.o -c /Users/guyuu/Desktop/DBMS/src/auth.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/auth.cpp",
+  "output": "CMakeFiles/dbms.dir/src/auth.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/ddl.cpp.o -c /Users/guyuu/Desktop/DBMS/src/ddl.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/ddl.cpp",
+  "output": "CMakeFiles/dbms.dir/src/ddl.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/dml.cpp.o -c /Users/guyuu/Desktop/DBMS/src/dml.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/dml.cpp",
+  "output": "CMakeFiles/dbms.dir/src/dml.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/http_server.cpp.o -c /Users/guyuu/Desktop/DBMS/src/http_server.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/http_server.cpp",
+  "output": "CMakeFiles/dbms.dir/src/http_server.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/parser.cpp.o -c /Users/guyuu/Desktop/DBMS/src/parser.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/parser.cpp",
+  "output": "CMakeFiles/dbms.dir/src/parser.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/query.cpp.o -c /Users/guyuu/Desktop/DBMS/src/query.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/query.cpp",
+  "output": "CMakeFiles/dbms.dir/src/query.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/storage_engine.cpp.o -c /Users/guyuu/Desktop/DBMS/src/storage_engine.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/storage_engine.cpp",
+  "output": "CMakeFiles/dbms.dir/src/storage_engine.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/storage_engine_txn.cpp.o -c /Users/guyuu/Desktop/DBMS/src/storage_engine_txn.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/storage_engine_txn.cpp",
+  "output": "CMakeFiles/dbms.dir/src/storage_engine_txn.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/path_utils.cpp.o -c /Users/guyuu/Desktop/DBMS/src/path_utils.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/path_utils.cpp",
+  "output": "CMakeFiles/dbms.dir/src/path_utils.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/txn/lock_manager.cpp.o -c /Users/guyuu/Desktop/DBMS/src/txn/lock_manager.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/txn/lock_manager.cpp",
+  "output": "CMakeFiles/dbms.dir/src/txn/lock_manager.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/txn/log_manager.cpp.o -c /Users/guyuu/Desktop/DBMS/src/txn/log_manager.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/txn/log_manager.cpp",
+  "output": "CMakeFiles/dbms.dir/src/txn/log_manager.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/txn/recovery.cpp.o -c /Users/guyuu/Desktop/DBMS/src/txn/recovery.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/txn/recovery.cpp",
+  "output": "CMakeFiles/dbms.dir/src/txn/recovery.cpp.o"
+},
+{
+  "directory": "/Users/guyuu/Desktop/DBMS/build",
+  "command": "/usr/bin/c++  -I/Users/guyuu/Desktop/DBMS/src -std=gnu++17 -arch arm64 -o CMakeFiles/dbms.dir/src/txn/txn_manager.cpp.o -c /Users/guyuu/Desktop/DBMS/src/txn/txn_manager.cpp",
+  "file": "/Users/guyuu/Desktop/DBMS/src/txn/txn_manager.cpp",
+  "output": "CMakeFiles/dbms.dir/src/txn/txn_manager.cpp.o"
+}
+]
