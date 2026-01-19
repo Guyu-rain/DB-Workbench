@@ -401,6 +401,12 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
       return cmd;
   }
 
+  // TCL: CHECKPOINT
+  if (upper == "CHECKPOINT") {
+      cmd.type = CommandType::kCheckpoint;
+      return cmd;
+  }
+
   // DCL: CREATE USER
   if (upper.find("CREATE USER") == 0) {
       cmd.type = CommandType::kCreateUser;

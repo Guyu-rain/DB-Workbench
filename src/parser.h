@@ -29,6 +29,7 @@ enum class CommandType {
   kDropUser,
   kGrant,
   kRevoke,
+  kCheckpoint,
   kBackup
 };
 

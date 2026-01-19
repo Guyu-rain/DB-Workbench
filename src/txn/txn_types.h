@@ -27,7 +27,8 @@ enum class LogType {
   UPDATE,
   DELETE,
   COMMIT,
-  ABORT
+  ABORT,
+  CHECKPOINT
 };
 
 struct LogRecord {

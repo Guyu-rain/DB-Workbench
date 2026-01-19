@@ -15,6 +15,7 @@ class LogManager {
   bool Flush(LSN lsn, std::string& err);
   bool GetRecord(LSN lsn, LogRecord& out) const;
   bool ReadAll(std::vector<LogRecord>& out, std::string& err) const;
+  bool TruncateWithBackup(std::string& err);
   LSN NextLsn() const { return next_lsn_; }
   void SetNextLsn(LSN next) { next_lsn_ = next; }
 

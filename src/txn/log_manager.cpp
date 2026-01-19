@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <filesystem>
 
 #include "../path_utils.h"
 #if defined(_WIN32)
@@ -126,6 +127,36 @@ bool LogManager::Flush(LSN, std::string& err) {
 #endif
 
   std::fclose(f);
+  return true;
+}
+
+bool LogManager::TruncateWithBackup(std::string& err) {
+  if (wal_path_.empty()) {
+    err = "WAL path not set";
+    return false;
+  }
+
+  namespace fs = std::filesystem;
+  try {
+    fs::path wal = wal_path_;
+    if (fs::exists(wal)) {
+      fs::path bak = wal_path_ + ".bak";
+      fs::copy_file(wal, bak, fs::copy_options::overwrite_existing);
+    }
+  } catch (const fs::filesystem_error& e) {
+    err = std::string("WAL backup failed: ") + e.what();
+    return false;
+  }
+
+  FILE* f = nullptr;
+  if (FopenCompat(&f, wal_path_.c_str(), "wb") != 0 || !f) {
+    err = "Cannot open WAL file for truncate: " + wal_path_;
+    return false;
+  }
+  std::fclose(f);
+
+  cache_.clear();
+  next_lsn_ = 1;
   return true;
 }
 
