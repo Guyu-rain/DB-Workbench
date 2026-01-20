@@ -10,7 +10,7 @@ class DDLService {
 
   bool CreateTable(const std::string& dbfPath, const std::string& datPath, const TableSchema& schema, std::string& err);
   bool RenameTable(const std::string& dbfPath, const std::string& datPath, const std::string& oldName, const std::string& newName, std::string& err);
-  bool DropTable(const std::string& dbfPath, const std::string& datPath, const std::string& tableName, std::string& err);
+  bool DropTable(const std::string& dbfPath, const std::string& datPath, const std::string& tableName, ReferentialAction action, std::string& err);
   
   // Alter Table Logic
   bool AddColumn(const std::string& dbfPath, const std::string& datPath, const std::string& tableName, const Field& newField, const std::string& afterCol, std::string& err); // if afterCol == "FIRST", put first
@@ -23,6 +23,8 @@ class DDLService {
   bool DropIndex(const std::string& dbfPath, const std::string& datPath, const std::string& tableName, const std::string& fieldName, std::string& err);
   bool ListIndexes(const std::string& dbfPath, const std::string& tableName, std::vector<IndexDef>& outIndexes, std::string& err);
   bool RebuildIndexes(const std::string& dbfPath, const std::string& datPath, const std::string& tableName, std::string& err);
+  bool AddForeignKey(const std::string& dbfPath, const std::string& datPath, const std::string& tableName, ForeignKeyDef fk, std::string& err);
+  bool DropForeignKey(const std::string& dbfPath, const std::string& datPath, const std::string& tableName, const std::string& fkName, std::string& err);
 
  private:
   StorageEngine& engine_;

@@ -18,6 +18,7 @@ enum class CommandType {
   kCreateIndex,
   kDropIndex,
   kShowIndexes,
+  kShowTables,
   kAlter,
   kBegin,
   kCommit,
@@ -66,6 +67,9 @@ struct ParsedCommand {
   std::string fieldName;              // for INDEX ops, DROP COLUMN
   bool isUnique = false;              // for CREATE INDEX
   std::string savepointName;          // for SAVEPOINT
+  ReferentialAction action = ReferentialAction::kRestrict;
+  bool actionSpecified = false;
+  ForeignKeyDef fkDef;
 
   // Alter Table specific
   AlterOperation alterOp = AlterOperation::kNone;

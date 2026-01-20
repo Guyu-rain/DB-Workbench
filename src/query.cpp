@@ -429,6 +429,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
 
   isJoin = isJoin && !plan.joinTable.empty();
   
+  std::vector<std::pair<size_t, size_t>> naturalPairs;
   if (isJoin) {
       // Load Schema2
       std::vector<TableSchema> allSchemas;
@@ -451,6 +452,32 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
          Field nf = f;
          nf.name = t2Prefix + "." + f.name; 
          combinedSchema.fields.push_back(nf);
+      }
+
+      if (plan.isNaturalJoin) {
+          for (size_t i = 0; i < schema.fields.size(); ++i) {
+              for (size_t j = 0; j < schema2.fields.size(); ++j) {
+                  if (Lower(schema.fields[i].name) == Lower(schema2.fields[j].name)) {
+                      naturalPairs.push_back({i, j});
+                  }
+              }
+          }
+      }
+  }
+
+  std::vector<std::string> effectiveProjection = plan.projection;
+  if (plan.isNaturalJoin) {
+      bool isStar = effectiveProjection.empty() ||
+                    (effectiveProjection.size() == 1 && effectiveProjection[0] == "*");
+      if (isStar) {
+          std::set<std::string> seen;
+          effectiveProjection.clear();
+          for (const auto& f : combinedSchema.fields) {
+              std::string base = Lower(f.name);
+              size_t dot = base.rfind('.');
+              if (dot != std::string::npos) base = base.substr(dot + 1);
+              if (seen.insert(base).second) effectiveProjection.push_back(f.name);
+          }
       }
   }
 
@@ -804,7 +831,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
           }
       }
 
-      for (const auto& r : matched) out.push_back(Project(combinedSchema, r, plan.projection));
+      for (const auto& r : matched) out.push_back(Project(combinedSchema, r, effectiveProjection));
       return true;
   }
 
@@ -816,7 +843,17 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
       return c;
   };
   
-  auto matchesVar = [&](const Record& cmb) {
+  auto matchesVar = [&](const Record& rA, const Record& rB, const Record& cmb) {
+      if (plan.isNaturalJoin) {
+          for (const auto& pr : naturalPairs) {
+              std::string lv = (pr.first < rA.values.size()) ? NormalizeValue(rA.values[pr.first]) : "";
+              std::string rv = (pr.second < rB.values.size()) ? NormalizeValue(rB.values[pr.second]) : "";
+              if (lv.empty() || rv.empty()) return false;
+              if (Lower(lv) == "null" || Lower(rv) == "null") return false;
+              if (lv != rv) return false;
+          }
+          return true;
+      }
       std::string l, r;
       if (!GetFieldValue(combinedSchema, cmb, plan.joinOnLeft, l)) return false;
       if (!GetFieldValue(combinedSchema, cmb, plan.joinOnRight, r)) return false;
@@ -836,7 +873,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
               const auto& row2 = r2[j];
               if (!row2.valid) continue;
               Record cur = createCombined(row1, row2);
-              if (matchesVar(cur)) {
+              if (matchesVar(row1, row2, cur)) {
                   if (MatchConditions(combinedSchema, cur, plan.conditions, datPath, dbfPath)) {
                        matched = true;
                        if (lock_manager && txn) {
@@ -876,7 +913,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
               const auto& row1 = r1[i];
               if (!row1.valid) continue;
               Record cur = createCombined(row1, row2);
-              if (matchesVar(cur)) {
+              if (matchesVar(row1, row2, cur)) {
                   if (MatchConditions(combinedSchema, cur, plan.conditions, datPath, dbfPath)) {
                        matched = true;
                        if (lock_manager && txn) {
@@ -1188,6 +1225,6 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
       std::sort(matchedRows.begin(), matchedRows.end(), cmp);
   }
 
-  for (const auto& r : matchedRows) out.push_back(Project(combinedSchema, r, plan.projection));
+  for (const auto& r : matchedRows) out.push_back(Project(combinedSchema, r, effectiveProjection));
   return true;
 }

@@ -137,7 +137,7 @@ bool AuthManager::CreateUser(const std::string& user, const std::string& pass, s
     if (exists) { err = "User already exists"; return false; }
     
     Record r; r.valid=true; r.values.push_back(user); r.values.push_back(pass);
-    return dml_.Insert(GetSystemDat(), schema, {r}, err);
+    return dml_.Insert(GetSystemDat(), GetSystemDbf(), schema, {r}, err);
 }
 
 bool AuthManager::DropUser(const std::string& user, std::string& err) {
@@ -146,13 +146,13 @@ bool AuthManager::DropUser(const std::string& user, std::string& err) {
     TableSchema schema;
     engine_.LoadSchema(GetSystemDbf(), kUserTable, schema, err);
     Condition c; c.fieldName="username"; c.op="="; c.value=user;
-    if (!dml_.Delete(GetSystemDat(), schema, {c}, err)) return false;
+    if (!dml_.Delete(GetSystemDat(), GetSystemDbf(), schema, {c}, ReferentialAction::kRestrict, false, err)) return false;
 
     // Drop privileges
     TableSchema pSchema;
     if(engine_.LoadSchema(GetSystemDbf(), kPrivTable, pSchema, err)) {
         Condition pc; pc.fieldName="username"; pc.op="="; pc.value=user;
-         dml_.Delete(GetSystemDat(), pSchema, {pc}, err);
+         dml_.Delete(GetSystemDat(), GetSystemDbf(), pSchema, {pc}, ReferentialAction::kRestrict, false, err);
     }
     return true;
 }
@@ -181,7 +181,7 @@ bool AuthManager::Grant(const std::string& user, const std::string& table, const
         r.values.push_back(normUser);
         r.values.push_back(normTable);
         r.values.push_back(normPriv);
-        if (!dml_.Insert(GetSystemDat(), pSchema, {r}, err)) return false;
+        if (!dml_.Insert(GetSystemDat(), GetSystemDbf(), pSchema, {r}, err)) return false;
     }
     return true;
 }
@@ -199,7 +199,7 @@ bool AuthManager::Revoke(const std::string& user, const std::string& table, cons
         { Condition c; c.fieldName="tablename"; c.op="="; c.value=normTable; conds.push_back(c); }
         { Condition c; c.fieldName="access"; c.op="="; c.value=normPriv; conds.push_back(c); }
         
-        dml_.Delete(GetSystemDat(), pSchema, conds, err);
+        dml_.Delete(GetSystemDat(), GetSystemDbf(), pSchema, conds, ReferentialAction::kRestrict, false, err);
     }
     return true;
 }

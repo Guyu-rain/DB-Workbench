@@ -29,6 +29,129 @@ std::string Trim(std::string s) {
   return s;
 }
 
+std::vector<std::string> SplitTopLevel(const std::string& s, char delim) {
+    std::vector<std::string> out;
+    std::string cur;
+    int depth = 0;
+    for (char ch : s) {
+        if (ch == '(') depth++;
+        else if (ch == ')') depth = std::max(0, depth - 1);
+        if (ch == delim && depth == 0) {
+            out.push_back(cur);
+            cur.clear();
+        } else {
+            cur.push_back(ch);
+        }
+    }
+    if (!cur.empty()) out.push_back(cur);
+    return out;
+}
+
+std::string StripIdentQuotes(std::string s) {
+    s = Trim(s);
+    if (s.size() >= 2) {
+        char f = s.front();
+        char b = s.back();
+        if ((f == '`' && b == '`') || (f == '"' && b == '"') || (f == '\'' && b == '\'')) {
+            return s.substr(1, s.size() - 2);
+        }
+    }
+    return s;
+}
+
+size_t FindMatchingClosingParen(const std::string& s, size_t openPos);
+
+ReferentialAction ParseReferentialActionToken(const std::string& token, bool& ok) {
+    std::string up = ToUpper(Trim(token));
+    ok = true;
+    if (up == "RESTRICT") return ReferentialAction::kRestrict;
+    if (up == "CASCADE") return ReferentialAction::kCascade;
+    if (up == "SET NULL") return ReferentialAction::kSetNull;
+    ok = false;
+    return ReferentialAction::kRestrict;
+}
+
+bool ParseTrailingAction(std::string& s, ReferentialAction& action) {
+    std::string t = Trim(s);
+    std::string up = ToUpper(t);
+    const std::string setNullToken = "SET NULL";
+    if (up.size() >= setNullToken.size() && up.substr(up.size() - setNullToken.size()) == setNullToken) {
+        action = ReferentialAction::kSetNull;
+        s = Trim(t.substr(0, t.size() - setNullToken.size()));
+        return true;
+    }
+    if (up.size() >= 8 && up.substr(up.size() - 8) == "RESTRICT") {
+        action = ReferentialAction::kRestrict;
+        s = Trim(t.substr(0, t.size() - 8));
+        return true;
+    }
+    if (up.size() >= 7 && up.substr(up.size() - 7) == "CASCADE") {
+        action = ReferentialAction::kCascade;
+        s = Trim(t.substr(0, t.size() - 7));
+        return true;
+    }
+    return false;
+}
+
+bool ParseForeignKeyClause(const std::string& input, ForeignKeyDef& out, std::string& err) {
+    std::string work = Trim(input);
+    std::string up = ToUpper(work);
+    if (up.find("CONSTRAINT ") == 0) {
+        std::string rest = Trim(work.substr(strlen("CONSTRAINT")));
+        size_t sp = rest.find(' ');
+        if (sp == std::string::npos) { err = "Invalid CONSTRAINT syntax"; return false; }
+        out.name = StripIdentQuotes(Trim(rest.substr(0, sp)));
+        work = Trim(rest.substr(sp + 1));
+        up = ToUpper(work);
+    }
+    size_t fkPos = up.find("FOREIGN KEY");
+    if (fkPos == std::string::npos) return false;
+    size_t colsL = work.find('(', fkPos);
+    if (colsL == std::string::npos) { err = "FOREIGN KEY missing columns"; return false; }
+    size_t colsR = FindMatchingClosingParen(work, colsL);
+    if (colsR == std::string::npos) { err = "FOREIGN KEY columns not closed"; return false; }
+    std::string colsPart = work.substr(colsL + 1, colsR - colsL - 1);
+    for (const auto& c : SplitTopLevel(colsPart, ',')) {
+        std::string col = StripIdentQuotes(Trim(c));
+        if (!col.empty()) out.columns.push_back(col);
+    }
+    std::string afterCols = Trim(work.substr(colsR + 1));
+    std::string upAfter = ToUpper(afterCols);
+    size_t refPos = upAfter.find("REFERENCES");
+    if (refPos == std::string::npos) { err = "FOREIGN KEY missing REFERENCES"; return false; }
+    std::string refBody = Trim(afterCols.substr(refPos + strlen("REFERENCES")));
+    if (refBody.empty()) { err = "REFERENCES missing table"; return false; }
+    size_t refColsL = refBody.find('(');
+    if (refColsL == std::string::npos) {
+        out.refTable = StripIdentQuotes(Trim(refBody));
+    } else {
+        out.refTable = StripIdentQuotes(Trim(refBody.substr(0, refColsL)));
+        size_t refColsR = FindMatchingClosingParen(refBody, refColsL);
+        if (refColsR == std::string::npos) { err = "REFERENCES columns not closed"; return false; }
+        std::string refCols = refBody.substr(refColsL + 1, refColsR - refColsL - 1);
+        for (const auto& c : SplitTopLevel(refCols, ',')) {
+            std::string col = StripIdentQuotes(Trim(c));
+            if (!col.empty()) out.refColumns.push_back(col);
+        }
+        refBody = Trim(refBody.substr(refColsR + 1));
+    }
+    std::string rest = Trim(refBody);
+    auto parseAction = [&](const std::string& key, ReferentialAction& outAction, const std::string& label) -> bool {
+        std::string upRest = ToUpper(rest);
+        size_t pos = upRest.find(key);
+        if (pos == std::string::npos) return true;
+        std::string tail = Trim(rest.substr(pos + key.size()));
+        size_t nextOn = ToUpper(tail).find(" ON ");
+        std::string token = (nextOn == std::string::npos) ? tail : Trim(tail.substr(0, nextOn));
+        bool ok = false;
+        outAction = ParseReferentialActionToken(token, ok);
+        if (!ok) { err = "Invalid " + label + " action"; return false; }
+        return true;
+    };
+    if (!parseAction("ON DELETE", out.onDelete, "ON DELETE")) return false;
+    if (!parseAction("ON UPDATE", out.onUpdate, "ON UPDATE")) return false;
+    return true;
+}
 // Helper to find matching closing parenthesis safely
 size_t FindMatchingClosingParen(const std::string& s, size_t openPos) {
     int depth = 0;
@@ -441,7 +564,8 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
   // DROP DATABASE xxx
   if (upper.find("DROP DATABASE") == 0) {
       cmd.type = CommandType::kDropDatabase;
-      std::string namePart = sql.substr(strlen("DROP DATABASE"));
+      std::string namePart = Trim(sql.substr(strlen("DROP DATABASE")));
+      if (ParseTrailingAction(namePart, cmd.action)) cmd.actionSpecified = true;
       cmd.dbName = Trim(namePart);
       if (cmd.dbName.empty()) {
           err = "Database name is required";
@@ -658,7 +782,7 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
       size_t firstSpace = rest.find(' ');
       if (firstSpace == std::string::npos) { err = "Incomplete ALTER TABLE"; return cmd; }
       
-      cmd.tableName = Trim(rest.substr(0, firstSpace));
+      cmd.tableName = StripIdentQuotes(Trim(rest.substr(0, firstSpace)));
       std::string action = Trim(rest.substr(firstSpace + 1));
       std::string upAction = ToUpper(action);
 
@@ -683,10 +807,13 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
                return cmd;
            }
            
-           // ADD CONSTRAINT
-           if (upAction.find("ADD CONSTRAINT") == 0) {
+           // ADD CONSTRAINT / ADD FOREIGN KEY
+           if (upAction.find("ADD CONSTRAINT") == 0 || upAction.find("ADD FOREIGN KEY") == 0) {
                 cmd.alterOp = AlterOperation::kAddConstraint;
-                cmd.indexName = Trim(action.substr(14)); // Just storing name for now
+                std::string fkBody = Trim(action.substr(3));
+                ForeignKeyDef fk;
+                if (!ParseForeignKeyClause(fkBody, fk, err)) return cmd;
+                cmd.fkDef = fk;
                 return cmd;
            }
            
@@ -740,6 +867,11 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
            if (upAction.find("DROP FOREIGN KEY") == 0) {
                cmd.alterOp = AlterOperation::kDropConstraint;
                cmd.indexName = Trim(action.substr(16));
+               return cmd;
+           }
+           if (upAction.find("DROP CONSTRAINT") == 0) {
+               cmd.alterOp = AlterOperation::kDropConstraint;
+               cmd.indexName = Trim(action.substr(15));
                return cmd;
            }
            // Fallback for DROP colName
@@ -830,6 +962,17 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
       cmd.tableName = Trim(rest.substr(fromPos + 6));
       return cmd;
   }
+
+  // SHOW TABLES [FROM db]
+  if (upper.find("SHOW TABLES") == 0) {
+      cmd.type = CommandType::kShowTables;
+      std::string rest = Trim(sql.substr(strlen("SHOW TABLES")));
+      std::string upRest = ToUpper(rest);
+      if (upRest.find("FROM ") == 0) {
+          cmd.dbName = Trim(rest.substr(5));
+      }
+      return cmd;
+  }
   
   // ====== REPLACE the whole CREATE TABLE branch in Parser::Parse() ======
   if (upper.find("CREATE TABLE") == 0) {
@@ -853,10 +996,16 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
       cmd.tableName = Trim(createBody.substr(0, parenL));
       std::string fieldList = createBody.substr(parenL + 1, parenR - parenL - 1);
 
-      auto fields = Split(fieldList, ',');
+      auto fields = SplitTopLevel(fieldList, ',');
       for (auto& raw : fields) {
           std::string fstr = Trim(raw);
           if (fstr.empty()) continue;
+          ForeignKeyDef fk;
+          std::string fkErr;
+          if (ParseForeignKeyClause(fstr, fk, fkErr)) {
+              cmd.schema.foreignKeys.push_back(fk);
+              continue;
+          }
 
           // Tokenize by spaces, but keep type token like char(32) or char[32] together
           auto parts = Split(fstr, ' ');
@@ -987,7 +1136,8 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
     if (upper.find("DELETE FROM") == 0) {
         cmd.type = CommandType::kDelete;
         // DELETE FROM table WHERE field = value
-        std::string rest = sql.substr(strlen("DELETE FROM"));
+        std::string rest = Trim(sql.substr(strlen("DELETE FROM")));
+        if (ParseTrailingAction(rest, cmd.action)) cmd.actionSpecified = true;
         auto wherePos = ToUpper(rest).find("WHERE");
         
         if (wherePos == std::string::npos) {
@@ -1031,7 +1181,9 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
 
     if (upper.find("DROP TABLE") == 0) {
         cmd.type = CommandType::kDrop;
-        cmd.tableName = Trim(sql.substr(strlen("DROP TABLE")));
+        std::string rest = Trim(sql.substr(strlen("DROP TABLE")));
+        if (ParseTrailingAction(rest, cmd.action)) cmd.actionSpecified = true;
+        cmd.tableName = StripIdentQuotes(Trim(rest));
         return cmd;
     }
     
@@ -1044,8 +1196,8 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
              err = "RENAME syntax: RENAME TABLE old TO new";
              return cmd;
         }
-        cmd.tableName = Trim(rest.substr(0, toPos));
-        cmd.newName = Trim(rest.substr(toPos + 4));
+        cmd.tableName = StripIdentQuotes(Trim(rest.substr(0, toPos)));
+        cmd.newName = StripIdentQuotes(Trim(rest.substr(toPos + 4)));
         return cmd;
     }
 
@@ -1140,6 +1292,10 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         size_t orderPos = upperSql.find(" ORDER BY ", startRest);
         size_t bareJoin = std::string::npos;
 
+        size_t naturalJoin = upperSql.find(" NATURAL JOIN ", startRest);
+        size_t naturalLeft = upperSql.find(" NATURAL LEFT JOIN ", startRest);
+        size_t naturalRight = upperSql.find(" NATURAL RIGHT JOIN ", startRest);
+        size_t naturalInner = upperSql.find(" NATURAL INNER JOIN ", startRest);
         size_t leftJoin = upperSql.find(" LEFT JOIN ", startRest);
         size_t rightJoin = upperSql.find(" RIGHT JOIN ", startRest);
         size_t innerJoin = upperSql.find(" INNER JOIN ", startRest);
@@ -1155,7 +1311,27 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
             return true;
         };
 
-        if (isValidJoin(leftJoin)) {
+        if (isValidJoin(naturalLeft)) {
+            joinPos = naturalLeft;
+            cmd.query.joinType = JoinType::kLeft;
+            cmd.query.isNaturalJoin = true;
+            bareJoin = naturalLeft + 13; // " NATURAL LEFT" -> point to " JOIN"
+        } else if (isValidJoin(naturalRight)) {
+            joinPos = naturalRight;
+            cmd.query.joinType = JoinType::kRight;
+            cmd.query.isNaturalJoin = true;
+            bareJoin = naturalRight + 14;
+        } else if (isValidJoin(naturalInner)) {
+            joinPos = naturalInner;
+            cmd.query.joinType = JoinType::kInner;
+            cmd.query.isNaturalJoin = true;
+            bareJoin = naturalInner + 14;
+        } else if (isValidJoin(naturalJoin)) {
+            joinPos = naturalJoin;
+            cmd.query.joinType = JoinType::kInner;
+            cmd.query.isNaturalJoin = true;
+            bareJoin = naturalJoin + 8;
+        } else if (isValidJoin(leftJoin)) {
             joinPos = leftJoin;
             cmd.query.joinType = JoinType::kLeft;
             bareJoin = leftJoin + 5; // " LEFT" -> point to " JOIN"
@@ -1239,13 +1415,38 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         if (joinPos != std::string::npos) {
             size_t startT2 = bareJoin + 6; // After " JOIN "
             size_t onPos = upperSql.find(" ON ", startT2);
-            if (onPos == std::string::npos) { err = "JOIN missing ON"; return cmd; }
-            if (wherePos != std::string::npos && onPos > wherePos) { err = "ON clause after WHERE?"; return cmd; }
-            if (groupPos != std::string::npos && onPos > groupPos) { err = "ON clause after GROUP BY?"; return cmd; }
-            if (havingPos != std::string::npos && onPos > havingPos) { err = "ON clause after HAVING?"; return cmd; }
-            if (orderPos != std::string::npos && onPos > orderPos) { err = "ON clause after ORDER BY?"; return cmd; }
+            if (cmd.query.isNaturalJoin) {
+                size_t t2End = sql.size();
+                if (wherePos != std::string::npos && wherePos < t2End) t2End = wherePos;
+                if (groupPos != std::string::npos && groupPos < t2End) t2End = groupPos;
+                if (havingPos != std::string::npos && havingPos < t2End) t2End = havingPos;
+                if (orderPos != std::string::npos && orderPos < t2End) t2End = orderPos;
+                std::string t2Clause = Trim(sql.substr(startT2, t2End - startT2));
+                
+                {
+                    std::string upT2 = ToUpper(t2Clause);
+                    size_t asPos = upT2.find(" AS ");
+                    if (asPos != std::string::npos) {
+                        cmd.query.joinTable = Trim(t2Clause.substr(0, asPos));
+                        cmd.query.joinTableAlias = Trim(t2Clause.substr(asPos + 4));
+                    } else {
+                        size_t sp = t2Clause.rfind(' ');
+                        if (sp != std::string::npos) {
+                            cmd.query.joinTable = Trim(t2Clause.substr(0, sp));
+                            cmd.query.joinTableAlias = Trim(t2Clause.substr(sp + 1));
+                        } else {
+                            cmd.query.joinTable = t2Clause;
+                        }
+                    }
+                }
+            } else {
+                if (onPos == std::string::npos) { err = "JOIN missing ON"; return cmd; }
+                if (wherePos != std::string::npos && onPos > wherePos) { err = "ON clause after WHERE?"; return cmd; }
+                if (groupPos != std::string::npos && onPos > groupPos) { err = "ON clause after GROUP BY?"; return cmd; }
+                if (havingPos != std::string::npos && onPos > havingPos) { err = "ON clause after HAVING?"; return cmd; }
+                if (orderPos != std::string::npos && onPos > orderPos) { err = "ON clause after ORDER BY?"; return cmd; }
 
-            std::string t2Clause = Trim(sql.substr(startT2, onPos - startT2));
+                std::string t2Clause = Trim(sql.substr(startT2, onPos - startT2));
             
              // T2 Alias
             {
@@ -1277,6 +1478,7 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
                 cmd.query.joinOnRight = Trim(onCond.substr(eq + 1));
             } else {
                 err = "Invalid JOIN ON (e.g. T1.id = T2.id)"; return cmd;
+            }
             }
         }
 

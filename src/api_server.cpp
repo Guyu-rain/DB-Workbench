@@ -818,6 +818,20 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
 
         if (cmd.type == CommandType::kDropDatabase) {
            if (session.current_txn) { resp.status=400; resp.body=Error("DDL not allowed in active transaction"); return; }
+           if (cmd.actionSpecified && cmd.action == ReferentialAction::kRestrict) {
+                std::string dbf = dbms_paths::DbfPath(cmd.dbName);
+                std::vector<TableSchema> schemas;
+                if (engine_.LoadSchemas(dbf, schemas, err)) {
+                    bool hasFk = false;
+                    for (const auto& s : schemas) {
+                        if (!s.foreignKeys.empty()) { hasFk = true; break; }
+                    }
+                    if (hasFk) {
+                        resp.status = 400; resp.body = Error("DROP DATABASE RESTRICT blocked by foreign keys");
+                        return;
+                    }
+                }
+           }
            if (!engine_.DropDatabase(cmd.dbName, err)) {
                 resp.status = 400; resp.body = Error(err); return;
            } else {
@@ -862,7 +876,7 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
                 implicit = true;
             }
 
-              if (!dml_.Insert(currentDat_, schema, cmd.records, err, session.current_txn, &log_, &lock_manager_)) {
+              if (!dml_.Insert(currentDat_, currentDbf_, schema, cmd.records, err, session.current_txn, &log_, &lock_manager_)) {
                    if (implicit) {
                        RollbackTxn(session, err);
                    } else if (session.current_txn && IsLockTimeout(err)) {
@@ -930,11 +944,23 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
                      TableSchema schema2;
                      if (LoadSchema(cmd.query.joinTable, schema2, err)) {
                           displaySchema.fields.clear();
+                          std::set<std::string> seen;
                           for(const auto& f : schema.fields) {
                               Field nf = f; nf.name = schema.tableName + "." + f.name;
                               displaySchema.fields.push_back(nf);
+                              std::string base = f.name;
+                              std::transform(base.begin(), base.end(), base.begin(),
+                                             [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+                              seen.insert(base);
                           }
                           for(const auto& f : schema2.fields) {
+                              if (cmd.query.isNaturalJoin) {
+                                  std::string base = f.name;
+                                  std::transform(base.begin(), base.end(), base.begin(),
+                                                 [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+                                  if (seen.count(base)) continue;
+                                  seen.insert(base);
+                              }
                               Field nf = f; nf.name = schema2.tableName + "." + f.name;
                               displaySchema.fields.push_back(nf);
                           }
@@ -969,7 +995,7 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
                 implicit = true;
             }
 
-            if (!dml_.Delete(currentDat_, schema, cmd.conditions, err, session.current_txn, &log_, &lock_manager_)) {
+            if (!dml_.Delete(currentDat_, currentDbf_, schema, cmd.conditions, cmd.action, cmd.actionSpecified, err, session.current_txn, &log_, &lock_manager_)) {
                 if (implicit) {
                     RollbackTxn(session, err);
                 } else if (session.current_txn && IsLockTimeout(err)) {
@@ -997,7 +1023,7 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
                 implicit = true;
             }
 
-              if (!dml_.Update(currentDat_, schema, cmd.conditions, cmd.assignments, err, session.current_txn, &log_, &lock_manager_)) {
+              if (!dml_.Update(currentDat_, currentDbf_, schema, cmd.conditions, cmd.assignments, err, session.current_txn, &log_, &lock_manager_)) {
                   if (implicit) {
                       RollbackTxn(session, err);
                   } else if (session.current_txn && IsLockTimeout(err)) {
@@ -1016,7 +1042,7 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
         if (cmd.type == CommandType::kDrop) {
             if (session.current_txn) { resp.status=400; resp.body=Error("DDL not allowed in active transaction"); return; }
             std::string dataPath = currentDat_;
-            if (!ddl_.DropTable(currentDbf_, dataPath, cmd.tableName, err)) {
+            if (!ddl_.DropTable(currentDbf_, dataPath, cmd.tableName, cmd.actionSpecified ? cmd.action : ReferentialAction::kRestrict, err)) {
                  resp.status=400; resp.body=Error(err); return;
             } else {
                  lastStatus=200; lastResultBody="{\"ok\":true,\"message\":\"Table dropped\"}";
@@ -1096,12 +1122,10 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
                      ok = ddl_.DropIndex(currentDbf_, dataPath, cmd.tableName, cmd.indexName, err);
                      break;
                 case AlterOperation::kAddConstraint:
-                     err = "Add Constraint not implemented";
-                     ok = false;
+                     ok = ddl_.AddForeignKey(currentDbf_, dataPath, cmd.tableName, cmd.fkDef, err);
                      break;
                 case AlterOperation::kDropConstraint:
-                     err = "Drop Constraint not implemented";
-                     ok = false;
+                     ok = ddl_.DropForeignKey(currentDbf_, dataPath, cmd.tableName, cmd.indexName, err);
                      break;
                 default:
                     err = "Unsupported ALTER operation";
@@ -1160,6 +1184,26 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
             json += "]}";
             
             lastStatus = 200; 
+            lastResultBody = json;
+            continue;
+        }
+
+        if (cmd.type == CommandType::kShowTables) {
+            std::string dbf = currentDbf_;
+            if (!cmd.dbName.empty()) {
+                dbf = dbms_paths::DbfPath(cmd.dbName);
+            }
+            std::vector<TableSchema> schemas;
+            if (!engine_.LoadSchemas(dbf, schemas, err)) {
+                resp.status = 400; resp.body = Error(err); return;
+            }
+            std::string json = "{\"ok\":true,\"fields\":[{\"name\":\"Tables\",\"type\":\"string\"}],\"rows\":[";
+            for (size_t i = 0; i < schemas.size(); ++i) {
+                if (i > 0) json += ",";
+                json += "[\"" + JsonEscape(schemas[i].tableName) + "\"]";
+            }
+            json += "]}";
+            lastStatus = 200;
             lastResultBody = json;
             continue;
         }
@@ -1524,7 +1568,7 @@ void ApiServer::HandleInsert(const HttpRequest& req, HttpResponse& resp) {
     if (!session.current_txn) { resp.status=500; resp.body=Error(err, 500); return; }
     implicit = true;
   }
-  if (!dml_.Insert(dataPath, schema, {rec}, err, session.current_txn, &log_, &lock_manager_)) {
+  if (!dml_.Insert(dataPath, currentDbf_, schema, {rec}, err, session.current_txn, &log_, &lock_manager_)) {
     if (implicit) {
       RollbackTxn(session, err);
     } else if (session.current_txn && IsLockTimeout(err)) {
@@ -1588,7 +1632,7 @@ void ApiServer::HandleUpdate(const HttpRequest& req, HttpResponse& resp) {
     if (!session.current_txn) { resp.status=500; resp.body=Error(err, 500); return; }
     implicit = true;
   }
-    if (!dml_.Update(dataPath, schema, std::vector<Condition>{cond}, assigns, err, session.current_txn, &log_, &lock_manager_)) {
+    if (!dml_.Update(dataPath, currentDbf_, schema, std::vector<Condition>{cond}, assigns, err, session.current_txn, &log_, &lock_manager_)) {
       if (implicit) {
         RollbackTxn(session, err);
       } else if (session.current_txn && IsLockTimeout(err)) {
@@ -1633,7 +1677,7 @@ void ApiServer::HandleDelete(const HttpRequest& req, HttpResponse& resp) {
     if (!session.current_txn) { resp.status=500; resp.body=Error(err, 500); return; }
     implicit = true;
   }
-    if (!dml_.Delete(dataPath, schema, std::vector<Condition>{cond}, err, session.current_txn, &log_, &lock_manager_)) {
+    if (!dml_.Delete(dataPath, currentDbf_, schema, std::vector<Condition>{cond}, ReferentialAction::kRestrict, false, err, session.current_txn, &log_, &lock_manager_)) {
       if (implicit) {
         RollbackTxn(session, err);
       } else if (session.current_txn && IsLockTimeout(err)) {
