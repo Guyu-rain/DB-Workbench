@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include <functional>
+#include "parser.h"
 #include "txn/lock_manager.h"
 #include "path_utils.h"
 
@@ -134,6 +135,42 @@ bool QueryService::ExecuteSubQuery(const std::string& datPath, const std::string
     // For now, just delegate to the non-correlated version
     // In a full implementation, we would pass outerRec and outerSchema through to field resolution
     return ExecuteSubQuery(datPath, dbfPath, plan, out, err);
+}
+
+bool QueryService::ResolvePlanSourceSchema(const std::string& dbfPath, const QueryPlan& plan, TableSchema& schemaOut, std::string& err) {
+    if (!plan.sourceTable.empty()) {
+        if (engine_.LoadSchema(dbfPath, plan.sourceTable, schemaOut, err)) return true;
+        // fallback case-insensitive search
+        std::vector<TableSchema> schemas;
+        if (!engine_.LoadSchemas(dbfPath, schemas, err)) return false;
+        for (const auto& s : schemas) {
+            if (Lower(s.tableName) == Lower(plan.sourceTable)) { schemaOut = s; return true; }
+        }
+        err = "Table/view not found: " + plan.sourceTable;
+        return false;
+    }
+    if (plan.sourceSubQuery) {
+        TableSchema inner;
+        if (!ResolvePlanSourceSchema(dbfPath, *plan.sourceSubQuery, inner, err)) return false;
+        schemaOut = InferSchemaFromPlan(inner, *plan.sourceSubQuery);
+        return true;
+    }
+    err = "Invalid query plan source";
+    return false;
+}
+
+bool QueryService::EvaluateView(const std::string& datPath, const std::string& dbfPath, const TableSchema& viewSchema, std::vector<Record>& out, std::string& err, Txn* txn, LockManager* lock_manager, int depth) {
+    if (depth > 8) { err = "View recursion depth exceeded"; return false; }
+    if (viewSchema.viewSql.empty()) { err = "View definition missing"; return false; }
+    Parser p;
+    ParsedCommand cmd = p.Parse(viewSchema.viewSql, err);
+    if (!err.empty() || cmd.type != CommandType::kSelect) {
+        if (err.empty()) err = "Invalid view definition";
+        return false;
+    }
+    TableSchema baseSchema;
+    if (!ResolvePlanSourceSchema(dbfPath, cmd.query, baseSchema, err)) return false;
+    return Select(datPath, dbfPath, baseSchema, cmd.query, out, err, txn, lock_manager);
 }
 
 static bool GetFieldValueForOrder(const TableSchema& schema, const Record& rec, const std::string& fieldName,
@@ -365,11 +402,26 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
       }
   } releaser{lock_manager, txn, &sharedLocks};
 
+  static thread_local std::vector<std::string> viewStack;
+
   std::vector<Record> r1;
   std::vector<std::pair<long, Record>> r1o;
   
   // Try Index Optimization
   bool indexUsed = false;
+  if (schema.isView) {
+      std::string lowName = Lower(schema.tableName);
+      if (std::find(viewStack.begin(), viewStack.end(), lowName) != viewStack.end()) {
+          err = "View recursion detected";
+          return false;
+      }
+      viewStack.push_back(lowName);
+      struct ViewPop { std::vector<std::string>* stack; ~ViewPop(){ if (stack && !stack->empty()) stack->pop_back(); } } popGuard{&viewStack};
+      if (!EvaluateView(datPath, dbfPath, schema, r1, err, txn, lock_manager, static_cast<int>(viewStack.size()))) return false;
+      indexUsed = true;
+  }
+
+  if (!indexUsed) {
   for (const auto& c : plan.conditions) {
       if (c.op == "=" && !c.fieldName.empty()) {
           // Check if field is indexed
@@ -400,6 +452,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
                }
            }
       }
+  }
   }
 
   if (!indexUsed) {

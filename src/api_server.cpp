@@ -857,10 +857,21 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
             }
             continue;
         }
+
+        if (cmd.type == CommandType::kCreateView) {
+            if (session.current_txn) { resp.status=400; resp.body=Error("DDL not allowed in active transaction"); return; }
+            if (!ddl_.CreateView(currentDbf_, currentDat_, cmd.viewName, cmd.viewSql, cmd.viewQuery, cmd.viewColumns, cmd.viewOrReplace, err)) {
+                resp.status = 400; resp.body = Error(err); return;
+            } else {
+                lastStatus = 200; lastResultBody = "{\"ok\":true,\"message\":\"View created\"}";
+            }
+            continue;
+        }
         
         if (cmd.type == CommandType::kInsert) {
             TableSchema schema;
             if (!LoadSchema(cmd.tableName, schema, err)) { resp.status=400; resp.body=Error(err); return; }
+            if (schema.isView) { resp.status=400; resp.body=Error("Cannot insert into a view"); return; }
             
             for (const auto& rec : cmd.records) {
                 if (rec.values.size() != schema.fields.size()) {
@@ -986,6 +997,7 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
         if (cmd.type == CommandType::kDelete) {
             TableSchema schema;
             if (!LoadSchema(cmd.tableName, schema, err)) { resp.status=400; resp.body=Error(err); return; }
+            if (schema.isView) { resp.status=400; resp.body=Error("Cannot delete from a view"); return; }
 
             bool implicit = false;
             if (!session.current_txn) {
@@ -1014,6 +1026,7 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
         if (cmd.type == CommandType::kUpdate) {
             TableSchema schema;
             if (!LoadSchema(cmd.tableName, schema, err)) { resp.status=400; resp.body=Error(err); return; }
+            if (schema.isView) { resp.status=400; resp.body=Error("Cannot update a view"); return; }
 
             bool implicit = false;
             if (!session.current_txn) {
@@ -1046,6 +1059,16 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
                  resp.status=400; resp.body=Error(err); return;
             } else {
                  lastStatus=200; lastResultBody="{\"ok\":true,\"message\":\"Table dropped\"}";
+            }
+            continue;
+        }
+
+        if (cmd.type == CommandType::kDropView) {
+            if (session.current_txn) { resp.status=400; resp.body=Error("DDL not allowed in active transaction"); return; }
+            if (!ddl_.DropView(currentDbf_, currentDat_, cmd.viewName, cmd.ifExists, err)) {
+                resp.status=400; resp.body=Error(err); return;
+            } else {
+                lastStatus=200; lastResultBody="{\"ok\":true,\"message\":\"View dropped\"}";
             }
             continue;
         }
@@ -1807,6 +1830,7 @@ static std::string SerializeSchemaObj(const TableSchema& s) {
     std::ostringstream oss;
     oss << "{"
         << "\"table\":\"" << esc(s.tableName) << "\","
+        << "\"isView\":" << (s.isView ? "true" : "false") << ","
         << "\"fields\":[";
     for (size_t i = 0; i < s.fields.size(); ++i) {
         if (i) oss << ",";

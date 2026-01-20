@@ -20,6 +20,8 @@ enum class CommandType {
   kShowIndexes,
   kShowTables,
   kAlter,
+  kCreateView,
+  kDropView,
   kBegin,
   kCommit,
   kRollback,
@@ -75,6 +77,14 @@ struct ParsedCommand {
   AlterOperation alterOp = AlterOperation::kNone;
   Field columnDef;                    // For ADD/MODIFY COLUMN
   std::string extraInfo;              // For AFTER column name, etc.
+
+  // View definition
+  std::string viewName;
+  QueryPlan viewQuery;
+  std::vector<std::string> viewColumns;
+  std::string viewSql;
+  bool viewOrReplace = false;
+  bool ifExists = false;
 };
 
 class Parser {

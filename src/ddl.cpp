@@ -3,8 +3,10 @@
 #include <cctype>
 #include <fstream>
 #include <map>
+#include <set>
 #include <cstdio>
 #include "path_utils.h"
+#include "parser.h"
 
 namespace {
 std::string NormalizeValue(std::string s) {
@@ -195,6 +197,191 @@ void NormalizeForeignKey(ForeignKeyDef& fk) {
     if (lp != std::string::npos) fk.refTable = Trim(fk.refTable.substr(0, lp));
     for (auto& c : fk.columns) c = StripIdentQuotes(c);
     for (auto& c : fk.refColumns) c = StripIdentQuotes(c);
+}
+
+bool SchemaByName(const std::vector<TableSchema>& schemas, const std::string& name, TableSchema& out) {
+    std::string low = Lower(name);
+    for (const auto& s : schemas) {
+        if (Lower(s.tableName) == low) { out = s; return true; }
+    }
+    return false;
+}
+
+bool FieldExistsInSchema(const TableSchema& schema, const std::string& name) {
+    std::string low = Lower(name);
+    for (const auto& f : schema.fields) {
+        if (Lower(f.name) == low) return true;
+        size_t dot = f.name.find('.');
+        if (dot != std::string::npos && Lower(f.name.substr(dot + 1)) == low) return true;
+    }
+    return false;
+}
+
+TableSchema BuildCombinedSchema(const TableSchema& left, const std::string& leftAlias,
+                                const TableSchema* right, const std::string& rightAlias,
+                                bool naturalJoin) {
+    TableSchema combined;
+    auto addWithAlias = [&](const TableSchema& s, const std::string& alias) {
+        std::string prefix = alias.empty() ? s.tableName : alias;
+        for (const auto& f : s.fields) {
+            Field nf = f;
+            nf.name = prefix.empty() ? f.name : (prefix + "." + f.name);
+            combined.fields.push_back(nf);
+        }
+    };
+    addWithAlias(left, leftAlias);
+    if (right) addWithAlias(*right, rightAlias);
+
+    if (naturalJoin) {
+        std::set<std::string> seen;
+        std::vector<Field> dedup;
+        for (const auto& f : combined.fields) {
+            std::string base = Lower(f.name);
+            size_t dot = base.rfind('.');
+            if (dot != std::string::npos) base = base.substr(dot + 1);
+            if (seen.insert(base).second) dedup.push_back(f);
+        }
+        combined.fields = dedup;
+    }
+    return combined;
+}
+
+bool ValidateViewPlan(const QueryPlan& plan, const std::vector<TableSchema>& schemas,
+                      std::set<std::string>& visiting, std::string& err);
+
+bool ValidateSubQueries(const QueryPlan& plan, const std::vector<TableSchema>& schemas,
+                        std::set<std::string>& visiting, std::string& err) {
+    for (const auto& c : plan.conditions) {
+        if (c.isSubQuery && c.subQueryPlan) {
+            if (!ValidateViewPlan(*c.subQueryPlan, schemas, visiting, err)) return false;
+        }
+    }
+    for (const auto& c : plan.havingConditions) {
+        if (c.isSubQuery && c.subQueryPlan) {
+            if (!ValidateViewPlan(*c.subQueryPlan, schemas, visiting, err)) return false;
+        }
+    }
+    for (const auto& s : plan.selectExprs) {
+        if (s.isSubQuery && s.subQueryPlan) {
+            if (!ValidateViewPlan(*s.subQueryPlan, schemas, visiting, err)) return false;
+        }
+    }
+    return true;
+}
+
+bool ValidateViewPlan(const QueryPlan& plan, const std::vector<TableSchema>& schemas,
+                      std::set<std::string>& visiting, std::string& err) {
+    TableSchema base;
+    if (!plan.sourceTable.empty()) {
+        if (!SchemaByName(schemas, plan.sourceTable, base)) { err = "Referenced table/view not found: " + plan.sourceTable; return false; }
+        if (base.isView) {
+            std::string low = Lower(base.tableName);
+            if (visiting.count(low)) { err = "Recursive view detected: " + base.tableName; return false; }
+            visiting.insert(low);
+            Parser p;
+            std::string perr;
+            ParsedCommand pc = p.Parse(base.viewSql, perr);
+            if (!perr.empty() || pc.type != CommandType::kSelect) { err = "Invalid stored view definition for " + base.tableName; return false; }
+            if (!ValidateViewPlan(pc.query, schemas, visiting, err)) return false;
+            visiting.erase(low);
+        }
+    } else if (plan.sourceSubQuery) {
+        if (!ValidateViewPlan(*plan.sourceSubQuery, schemas, visiting, err)) return false;
+    } else {
+        err = "Invalid view source";
+        return false;
+    }
+
+    if (!plan.joinTable.empty()) {
+        TableSchema right;
+        if (!SchemaByName(schemas, plan.joinTable, right)) { err = "Join table/view not found: " + plan.joinTable; return false; }
+        if (right.isView) {
+            std::string low = Lower(right.tableName);
+            if (visiting.count(low)) { err = "Recursive view detected: " + right.tableName; return false; }
+            visiting.insert(low);
+            Parser p;
+            std::string perr;
+            ParsedCommand pc = p.Parse(right.viewSql, perr);
+            if (!perr.empty() || pc.type != CommandType::kSelect) { err = "Invalid stored view definition for " + right.tableName; return false; }
+            if (!ValidateViewPlan(pc.query, schemas, visiting, err)) return false;
+            visiting.erase(low);
+        }
+    }
+
+    return ValidateSubQueries(plan, schemas, visiting, err);
+}
+
+bool DeriveViewFields(const QueryPlan& plan, const std::vector<TableSchema>& schemas,
+                      std::vector<Field>& outFields, std::string& err) {
+    outFields.clear();
+    TableSchema left;
+    if (!plan.sourceTable.empty()) {
+        if (!SchemaByName(schemas, plan.sourceTable, left)) { err = "Table/view not found: " + plan.sourceTable; return false; }
+    } else if (plan.sourceSubQuery) {
+        std::vector<Field> innerFields;
+        if (!DeriveViewFields(*plan.sourceSubQuery, schemas, innerFields, err)) return false;
+        left.tableName = plan.sourceAlias.empty() ? "Derived" : plan.sourceAlias;
+        left.fields = innerFields;
+    } else {
+        err = "Invalid view definition (missing source)";
+        return false;
+    }
+
+    TableSchema right;
+    TableSchema* rightPtr = nullptr;
+    if (!plan.joinTable.empty()) {
+        if (!SchemaByName(schemas, plan.joinTable, right)) { err = "Join target not found: " + plan.joinTable; return false; }
+        rightPtr = &right;
+    }
+
+    TableSchema combined = BuildCombinedSchema(left, plan.tableAlias, rightPtr, plan.joinTableAlias, plan.isNaturalJoin);
+
+    size_t exprIdx = 0;
+    for (const auto& sel : plan.selectExprs) {
+        if (sel.isAggregate) {
+            Field f;
+            f.name = !sel.alias.empty() ? sel.alias : (sel.agg.func + "(" + sel.agg.field + ")");
+            f.type = "string";
+            outFields.push_back(f);
+            continue;
+        }
+        if (sel.isSubQuery) {
+            Field f;
+            f.name = !sel.alias.empty() ? sel.alias : ("subquery_" + std::to_string(exprIdx));
+            f.type = "string";
+            outFields.push_back(f);
+            ++exprIdx;
+            continue;
+        }
+        std::string fieldName = sel.field;
+        if (fieldName == "*") {
+            for (const auto& f : combined.fields) {
+                Field nf = f;
+                nf.isKey = false;
+                nf.nullable = true;
+                size_t dot = nf.name.rfind('.');
+                if (dot != std::string::npos) nf.name = nf.name.substr(dot + 1);
+                outFields.push_back(nf);
+            }
+            ++exprIdx;
+            continue;
+        }
+        if (!FieldExistsInSchema(combined, fieldName)) {
+            err = "Column not found in view definition: " + fieldName;
+            return false;
+        }
+        Field f;
+        if (!sel.alias.empty()) {
+            f.name = sel.alias;
+        } else {
+            size_t dot = fieldName.rfind('.');
+            f.name = (dot == std::string::npos) ? fieldName : fieldName.substr(dot + 1);
+        }
+        f.type = "string";
+        outFields.push_back(f);
+        ++exprIdx;
+    }
+    return true;
 }
 }
 
@@ -481,6 +668,63 @@ bool DDLService::DropForeignKey(const std::string& dbfPath, const std::string& d
     return engine_.SaveSchemas(dbfPath, schemas, err);
 }
 
+bool DDLService::CreateView(const std::string& dbfPath, const std::string& datPath, const std::string& viewName,
+                            const std::string& viewSql, const QueryPlan& plan,
+                            const std::vector<std::string>& columnNames, bool orReplace, std::string& err) {
+    (void)datPath;
+    if (viewName.empty()) { err = "View name is required"; return false; }
+    std::vector<TableSchema> schemas;
+    if (!engine_.LoadSchemas(dbfPath, schemas, err)) return false;
+
+    auto it = std::find_if(schemas.begin(), schemas.end(), [&](const TableSchema& s){ return Lower(s.tableName) == Lower(viewName); });
+    if (it != schemas.end()) {
+        if (!it->isView) {
+            err = "A table with the same name already exists";
+            return false;
+        }
+        if (!orReplace) { err = "View already exists"; return false; }
+        schemas.erase(it);
+    }
+
+    std::set<std::string> visiting;
+    visiting.insert(Lower(viewName));
+    if (!ValidateViewPlan(plan, schemas, visiting, err)) return false;
+
+    std::vector<Field> fields;
+    if (!DeriveViewFields(plan, schemas, fields, err)) return false;
+
+    if (!columnNames.empty()) {
+        if (columnNames.size() != fields.size()) {
+            err = "Column list size does not match SELECT list";
+            return false;
+        }
+        for (size_t i = 0; i < fields.size(); ++i) fields[i].name = StripIdentQuotes(columnNames[i]);
+    }
+
+    TableSchema view;
+    view.tableName = viewName;
+    view.fields = fields;
+    view.isView = true;
+    view.viewSql = viewSql;
+
+    schemas.push_back(view);
+    return engine_.SaveSchemas(dbfPath, schemas, err);
+}
+
+bool DDLService::DropView(const std::string& dbfPath, const std::string& datPath, const std::string& viewName, bool ifExists, std::string& err) {
+    (void)datPath;
+    std::vector<TableSchema> schemas;
+    if (!engine_.LoadSchemas(dbfPath, schemas, err)) return false;
+    auto it = std::find_if(schemas.begin(), schemas.end(), [&](const TableSchema& s){ return Lower(s.tableName) == Lower(viewName); });
+    if (it == schemas.end() || !it->isView) {
+        if (ifExists) return true;
+        err = "View not found";
+        return false;
+    }
+    schemas.erase(it);
+    return engine_.SaveSchemas(dbfPath, schemas, err);
+}
+
 bool DDLService::DropTable(const std::string& dbfPath, const std::string& datPath, const std::string& tableName,
                            ReferentialAction action, std::string& err) {
   std::vector<TableSchema> schemas;
@@ -490,6 +734,10 @@ bool DDLService::DropTable(const std::string& dbfPath, const std::string& datPat
                          [&](const TableSchema& s) { return Lower(s.tableName) == Lower(tableName); });
   if (it == schemas.end()) {
     err = "Table not found";
+    return false;
+  }
+  if (it->isView) {
+    err = "Use DROP VIEW to remove a view";
     return false;
   }
 

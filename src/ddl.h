@@ -26,6 +26,11 @@ class DDLService {
   bool AddForeignKey(const std::string& dbfPath, const std::string& datPath, const std::string& tableName, ForeignKeyDef fk, std::string& err);
   bool DropForeignKey(const std::string& dbfPath, const std::string& datPath, const std::string& tableName, const std::string& fkName, std::string& err);
 
+  // View management
+  bool CreateView(const std::string& dbfPath, const std::string& datPath, const std::string& viewName, const std::string& viewSql, const QueryPlan& plan,
+                  const std::vector<std::string>& columnNames, bool orReplace, std::string& err);
+  bool DropView(const std::string& dbfPath, const std::string& datPath, const std::string& viewName, bool ifExists, std::string& err);
+
  private:
   StorageEngine& engine_;
   std::string GetIndexPath(const std::string& datPath, const std::string& tableName, const std::string& fieldName);

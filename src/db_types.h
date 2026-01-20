@@ -40,6 +40,8 @@ struct TableSchema {
   std::vector<Field> fields;
   std::vector<IndexDef> indexes; // Fields that have an index
   std::vector<ForeignKeyDef> foreignKeys;
+  bool isView = false;            // view flag
+  std::string viewSql;            // original CREATE VIEW SELECT text
 };
 
 // Single record

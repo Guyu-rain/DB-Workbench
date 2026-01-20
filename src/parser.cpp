@@ -59,6 +59,26 @@ std::string StripIdentQuotes(std::string s) {
     return s;
 }
 
+size_t FindKeywordTopLevel(const std::string& upperSql, const std::string& keyword, size_t startPos = 0) {
+    int depth = 0;
+    bool inSingle = false;
+    bool inDouble = false;
+    bool inBacktick = false;
+    for (size_t i = startPos; i + keyword.size() <= upperSql.size(); ++i) {
+        char c = upperSql[i];
+        if (c == '\'' && !inDouble && !inBacktick) inSingle = !inSingle;
+        else if (c == '"' && !inSingle && !inBacktick) inDouble = !inDouble;
+        else if (c == '`' && !inSingle && !inDouble) inBacktick = !inBacktick;
+
+        if (!inSingle && !inDouble && !inBacktick) {
+            if (c == '(') depth++;
+            else if (c == ')') depth = std::max(0, depth - 1);
+            if (depth == 0 && upperSql.compare(i, keyword.size(), keyword) == 0) return i;
+        }
+    }
+    return std::string::npos;
+}
+
 size_t FindMatchingClosingParen(const std::string& s, size_t openPos);
 
 ReferentialAction ParseReferentialActionToken(const std::string& token, bool& ok) {
@@ -973,6 +993,43 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
       }
       return cmd;
   }
+
+  // CREATE [OR REPLACE] VIEW view_name [(col,...)] AS SELECT ...
+  if (upper.find("CREATE VIEW") == 0 || upper.find("CREATE OR REPLACE VIEW") == 0) {
+      cmd.type = CommandType::kCreateView;
+      cmd.viewOrReplace = (upper.find("CREATE OR REPLACE VIEW") == 0);
+      size_t prefixLen = cmd.viewOrReplace ? strlen("CREATE OR REPLACE VIEW") : strlen("CREATE VIEW");
+      std::string rest = Trim(sql.substr(prefixLen));
+      auto asPos = ToUpper(rest).find(" AS ");
+      if (asPos == std::string::npos) { err = "CREATE VIEW missing AS"; return cmd; }
+      std::string namePart = Trim(rest.substr(0, asPos));
+      std::string body = Trim(rest.substr(asPos + 4));
+      if (body.empty()) { err = "CREATE VIEW missing SELECT body"; return cmd; }
+
+      size_t lp = namePart.find('(');
+      if (lp != std::string::npos) {
+          size_t rp = FindMatchingClosingParen(namePart, lp);
+          if (rp == std::string::npos) { err = "View column list not closed"; return cmd; }
+          std::string cols = namePart.substr(lp + 1, rp - lp - 1);
+          for (const auto& c : SplitTopLevel(cols, ',')) {
+              std::string col = StripIdentQuotes(Trim(c));
+              if (!col.empty()) cmd.viewColumns.push_back(col);
+          }
+          namePart = Trim(namePart.substr(0, lp));
+      }
+      cmd.viewName = StripIdentQuotes(namePart);
+      cmd.viewSql = body;
+
+      Parser subParser;
+      std::string subErr;
+      ParsedCommand sub = subParser.Parse(body, subErr);
+      if (!subErr.empty() || sub.type != CommandType::kSelect) {
+          err = "CREATE VIEW requires a SELECT statement";
+          return cmd;
+      }
+      cmd.viewQuery = sub.query;
+      return cmd;
+  }
   
   // ====== REPLACE the whole CREATE TABLE branch in Parser::Parse() ======
   if (upper.find("CREATE TABLE") == 0) {
@@ -1186,6 +1243,21 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         cmd.tableName = StripIdentQuotes(Trim(rest));
         return cmd;
     }
+
+    if (upper.find("DROP VIEW") == 0) {
+        cmd.type = CommandType::kDropView;
+        std::string rest = Trim(sql.substr(strlen("DROP VIEW")));
+        std::string upRest = ToUpper(rest);
+        if (upRest.find("IF EXISTS") == 0) {
+            cmd.ifExists = true;
+            rest = Trim(rest.substr(strlen("IF EXISTS")));
+        }
+        cmd.viewName = StripIdentQuotes(rest);
+        if (cmd.viewName.empty() && !cmd.ifExists) {
+            err = "View name is required";
+        }
+        return cmd;
+    }
     
     if (upper.find("RENAME TABLE") == 0) {
         cmd.type = CommandType::kRename;
@@ -1204,7 +1276,8 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
     if (upper.find("SELECT") == 0) {
         cmd.type = CommandType::kSelect;
 
-        size_t fromPos = ToUpper(sql).find(" FROM ");
+        std::string upperSql = ToUpper(sql);
+        size_t fromPos = FindKeywordTopLevel(upperSql, " FROM ");
         if (fromPos == std::string::npos) { err = "Missing FROM"; return cmd; }
 
         // 1. Parse Projection and Aliases
@@ -1283,23 +1356,21 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
 
         // 2. Parse FROM and JOIN
         size_t startRest = fromPos + 6;
-        std::string upperSql = ToUpper(sql);
-        
         size_t joinPos = std::string::npos;
-        size_t wherePos = upperSql.find(" WHERE ", startRest);
-        size_t groupPos = upperSql.find(" GROUP BY ", startRest);
-        size_t havingPos = upperSql.find(" HAVING ", startRest);
-        size_t orderPos = upperSql.find(" ORDER BY ", startRest);
+        size_t wherePos = FindKeywordTopLevel(upperSql, " WHERE ", startRest);
+        size_t groupPos = FindKeywordTopLevel(upperSql, " GROUP BY ", startRest);
+        size_t havingPos = FindKeywordTopLevel(upperSql, " HAVING ", startRest);
+        size_t orderPos = FindKeywordTopLevel(upperSql, " ORDER BY ", startRest);
         size_t bareJoin = std::string::npos;
 
-        size_t naturalJoin = upperSql.find(" NATURAL JOIN ", startRest);
-        size_t naturalLeft = upperSql.find(" NATURAL LEFT JOIN ", startRest);
-        size_t naturalRight = upperSql.find(" NATURAL RIGHT JOIN ", startRest);
-        size_t naturalInner = upperSql.find(" NATURAL INNER JOIN ", startRest);
-        size_t leftJoin = upperSql.find(" LEFT JOIN ", startRest);
-        size_t rightJoin = upperSql.find(" RIGHT JOIN ", startRest);
-        size_t innerJoin = upperSql.find(" INNER JOIN ", startRest);
-        size_t justJoin = upperSql.find(" JOIN ", startRest);
+        size_t naturalJoin = FindKeywordTopLevel(upperSql, " NATURAL JOIN ", startRest);
+        size_t naturalLeft = FindKeywordTopLevel(upperSql, " NATURAL LEFT JOIN ", startRest);
+        size_t naturalRight = FindKeywordTopLevel(upperSql, " NATURAL RIGHT JOIN ", startRest);
+        size_t naturalInner = FindKeywordTopLevel(upperSql, " NATURAL INNER JOIN ", startRest);
+        size_t leftJoin = FindKeywordTopLevel(upperSql, " LEFT JOIN ", startRest);
+        size_t rightJoin = FindKeywordTopLevel(upperSql, " RIGHT JOIN ", startRest);
+        size_t innerJoin = FindKeywordTopLevel(upperSql, " INNER JOIN ", startRest);
+        size_t justJoin = FindKeywordTopLevel(upperSql, " JOIN ", startRest);
 
         // Find the effective JOIN clause (ignoring keywords inside WHERE if any - simple check)
         auto isValidJoin = [&](size_t pos) { 
@@ -1414,7 +1485,7 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         // T2 & Join Logic
         if (joinPos != std::string::npos) {
             size_t startT2 = bareJoin + 6; // After " JOIN "
-            size_t onPos = upperSql.find(" ON ", startT2);
+            size_t onPos = FindKeywordTopLevel(upperSql, " ON ", startT2);
             if (cmd.query.isNaturalJoin) {
                 size_t t2End = sql.size();
                 if (wherePos != std::string::npos && wherePos < t2End) t2End = wherePos;

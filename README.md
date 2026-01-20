@@ -5,6 +5,7 @@
 ## 功能
 - 存储引擎：.dbf/.dat 文件与索引读写
 - SQL 解析与执行：SELECT/INSERT/UPDATE/DELETE、JOIN、GROUP BY、聚合
+- 视图：CREATE VIEW / DROP VIEW、查询视图
 - 事务：WAL 日志、锁管理、恢复扫描
 - 内置 HTTP 服务器与 Web UI（workbench / SQL console）
 
