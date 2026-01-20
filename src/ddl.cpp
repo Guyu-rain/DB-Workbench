@@ -3,6 +3,7 @@
 #include <fstream>
 #include <map>
 #include <cstdio>
+#include "path_utils.h"
 
 namespace {
 std::string NormalizeValue(std::string s) {
@@ -16,7 +17,7 @@ std::string NormalizeValue(std::string s) {
 }
 
 std::string DDLService::GetIndexPath(const std::string& datPath, const std::string& tableName, const std::string& fieldName) {
-    return datPath + "." + tableName + "." + fieldName + ".idx";
+    return dbms_paths::IndexPathFromDat(datPath, tableName, fieldName);
 }
 
 bool DDLService::CreateTable(const std::string& dbfPath, const std::string& datPath, const TableSchema& schema, std::string& err) {
@@ -47,6 +48,7 @@ bool DDLService::CreateTable(const std::string& dbfPath, const std::string& datP
   if (!engine_.SaveRecords(datPath, finalSchema, empty, err)) return false;
 
   // Create empty index files for all indexes
+  if (!dbms_paths::EnsureIndexDirFromDat(datPath, err)) return false;
   for(const auto& idx : finalSchema.indexes) {
       std::string idxPath = GetIndexPath(datPath, finalSchema.tableName, idx.fieldName);
       std::map<std::string, long> emptyMap;
@@ -118,8 +120,11 @@ bool DDLService::CreateIndex(const std::string& dbfPath, const std::string& datP
     size_t valIndex = static_cast<size_t>(std::distance(schema.fields.begin(), fit));
 
     // Check if already indexed
-    auto idxIt = std::find_if(schema.indexes.begin(), schema.indexes.end(), [&](const IndexDef& d){ return d.fieldName == fieldName; });
+    auto idxIt = std::find_if(schema.indexes.begin(), schema.indexes.end(),
+                              [&](const IndexDef& d){ return d.fieldName == fieldName; });
     if (idxIt != schema.indexes.end()) {
+        // If a unique index already exists on this field (e.g., PRIMARY), treat as no-op.
+        if (isUnique && idxIt->isUnique) return true;
         err = "Index already exists on this field";
         return false;
     }
@@ -158,6 +163,7 @@ bool DDLService::CreateIndex(const std::string& dbfPath, const std::string& datP
         }
     }
 
+    if (!dbms_paths::EnsureIndexDirFromDat(datPath, err)) return false;
     return engine_.SaveIndex(GetIndexPath(datPath, tableName, newIdx.name), idxMap, err);
 }
 
@@ -210,6 +216,7 @@ bool DDLService::RebuildIndexes(const std::string& dbfPath, const std::string& d
     std::vector<std::pair<long, Record>> records;
     if (!engine_.ReadRecordsWithOffsets(datPath, schema, records, err)) return false;
 
+    if (!dbms_paths::EnsureIndexDirFromDat(datPath, err)) return false;
     for (const auto& idxDef : schema.indexes) {
          auto fit = std::find_if(schema.fields.begin(), schema.fields.end(), [&](const Field& f){ return f.name == idxDef.fieldName; });
          if (fit == schema.fields.end()) continue;

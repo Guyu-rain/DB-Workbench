@@ -375,9 +375,12 @@ ApiServer::ApiServer(StorageEngine& engine,
     txn_manager_(txn_manager),
     lock_manager_(lock_manager),
     auth_(engine, ddl, dml), // Init Auth
-    currentDbName_("default"),
+    dbfPath_(dbfPath),
+    datPath_(datPath),
     currentDbf_(dbfPath),
     currentDat_(datPath) {
+    std::string base = std::filesystem::path(dbfPath).stem().string();
+    currentDbName_ = base.empty() ? "default" : base;
     std::string err;
     auth_.Init(err); 
     }
@@ -509,8 +512,34 @@ std::string ApiServer::Success(const std::string& body) const {
   return "{\"ok\":true" + trimmed + "}";
 }
 
+bool ApiServer::EnsureDefaultDb(std::string& err) {
+  if (currentDbName_ != "MyDB") return true;
+
+  if (!dbms_paths::EnsureDbDir(currentDbName_, err)) return false;
+
+  std::vector<TableSchema> schemas;
+  if (!engine_.LoadSchemas(currentDbf_, schemas, err)) return false;
+
+  auto it = std::find_if(schemas.begin(), schemas.end(),
+                         [](const TableSchema& s) { return s.tableName == "Users"; });
+  if (it != schemas.end()) return true;
+
+  TableSchema schema;
+  schema.tableName = "Users";
+  schema.fields = {
+      {"Id", "int", 4, true,  false, true},
+      {"Name", "char[32]", 32, false, false, true},
+      {"Age", "int", 4, false, true,  true},
+      {"Role", "char[16]", 16, false, true,  true},
+      {"Status","char[16]", 16, false, true,  true},
+  };
+
+  return ddl_.CreateTable(currentDbf_, currentDat_, schema, err);
+}
+
 void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
     std::string err;
+    if (!EnsureDefaultDb(err)) { resp.status = 500; resp.body = Error(err, 500); return; }
     JsonValue root = JsonValue::Parse(req.body, err);
     if (!err.empty() || !root.IsObject()) {
         resp.status = 400; resp.body = Error("Invalid JSON"); return;
@@ -605,6 +634,7 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
 
     std::string lastResultBody;
     int lastStatus = 200;
+    std::string lastDbName;
     
     // Auth Check
     std::string user = CheckAuth(req, resp);
@@ -685,6 +715,7 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
     log_.SetDbName(db);
             log_.SetDbName(db);
             
+            lastDbName = currentDbName_;
             lastStatus = 200;
             lastResultBody = "{\"ok\":true,\"message\":\"Switched to database " + JsonEscape(db) + "\"}";
             continue;
@@ -791,9 +822,10 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
                 resp.status = 400; resp.body = Error(err); return;
            } else {
                 if (currentDbName_ == cmd.dbName) {
-                    currentDbName_ = "default";
-                    currentDbf_ = dbms_paths::DbfPath("MyDB");
-                    currentDat_ = dbms_paths::DatPath("MyDB");
+                    std::string base = std::filesystem::path(dbfPath_).stem().string();
+                    currentDbName_ = base.empty() ? "default" : base;
+                    currentDbf_ = dbfPath_;
+                    currentDat_ = datPath_;
                     log_.SetDbName(currentDbName_);
                 }
                 lastStatus = 200; lastResultBody = "{\"ok\":true,\"message\":\"Database dropped\"}";
@@ -1138,7 +1170,14 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
     }
 
     resp.status = lastStatus;
-    resp.body = lastResultBody;
+    if (lastDbName.empty()) lastDbName = currentDbName_;
+    if (lastResultBody.empty()) {
+        resp.body = "{\"ok\":true,\"db\":\"" + JsonEscape(lastDbName) + "\"}";
+    } else {
+        if (lastResultBody.back() == '}') lastResultBody.pop_back();
+        lastResultBody += ",\"db\":\"" + JsonEscape(lastDbName) + "\"}";
+        resp.body = lastResultBody;
+    }
 }
 
 void ApiServer::HandleCreateDatabase(const HttpRequest& req, HttpResponse& resp) {
@@ -1226,6 +1265,9 @@ void ApiServer::HandleListDatabases(const HttpRequest& req, HttpResponse& resp) 
   std::string user = CheckAuth(req, resp);
   if (user.empty()) return;
 
+  std::string err;
+  if (!EnsureDefaultDb(err)) { resp.status = 500; resp.body = Error(err, 500); return; }
+
   resp.contentType = "application/json";
 
   std::vector<std::string> dbNames;
@@ -1233,10 +1275,18 @@ void ApiServer::HandleListDatabases(const HttpRequest& req, HttpResponse& resp) 
     const fs::path data_dir = dbms_paths::DataDirPath();
     if (fs::exists(data_dir)) {
       for (const auto& entry : fs::directory_iterator(data_dir)) {
-        if (!entry.is_regular_file()) continue;
         const auto p = entry.path();
-        if (p.extension() != ".dbf") continue;
-        std::string name = p.stem().string();
+        std::string name;
+        if (entry.is_directory()) {
+          const auto dbf = p / (p.filename().string() + ".dbf");
+          if (!fs::exists(dbf)) continue;
+          name = p.filename().string();
+        } else if (entry.is_regular_file()) {
+          if (p.extension() != ".dbf") continue;
+          name = p.stem().string();
+        } else {
+          continue;
+        }
         if (name == "system") continue;
         dbNames.push_back(name);
       }
@@ -1692,6 +1742,9 @@ void ApiServer::HandleListTables(const HttpRequest& req, HttpResponse& resp) {
   std::string user = CheckAuth(req, resp);
   if (user.empty()) return;
 
+  std::string err;
+  if (!EnsureDefaultDb(err)) { resp.status = 500; resp.body = Error(err, 500); return; }
+
   std::vector<TableSchema> schemas = ListSchemas();
   std::ostringstream oss;
   oss << "{\"ok\":true,\"tables\":[";
@@ -1731,6 +1784,9 @@ void ApiServer::HandleSchemas(const HttpRequest& req, HttpResponse& resp) {
     std::string user = CheckAuth(req, resp);
     if (user.empty()) return;
 
+    std::string err;
+    if (!EnsureDefaultDb(err)) { resp.status = 500; resp.body = Error(err, 500); return; }
+
     auto schemas = ListSchemas();
     std::ostringstream oss;
     oss << "{\"ok\":true,\"schemas\":[";
@@ -1748,6 +1804,7 @@ void ApiServer::HandleSchema(const HttpRequest& req, HttpResponse& resp) {
     if (user.empty()) return;
 
     std::string err;
+    if (!EnsureDefaultDb(err)) { resp.status = 500; resp.body = Error(err, 500); return; }
     JsonValue root = JsonValue::Parse(req.body, err);
     if (!err.empty() || !root.IsObject()) { resp.status = 400; resp.body = Error("Invalid JSON body"); return; }
     std::string table = root.Get("table") ? root.Get("table")->AsString("") : "";

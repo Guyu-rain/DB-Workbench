@@ -7,6 +7,7 @@
 #include <set>
 #include <functional>
 #include "txn/lock_manager.h"
+#include "path_utils.h"
 
 namespace {
 std::string Lower(const std::string& s) {
@@ -375,7 +376,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
            auto it = std::find_if(schema.indexes.begin(), schema.indexes.end(), [&](const IndexDef& d){ return d.fieldName == c.fieldName; });
            if (it != schema.indexes.end()) {
                // Use index name for file path
-               std::string idxPath = datPath + "." + schema.tableName + "." + it->name + ".idx";
+               std::string idxPath = dbms_paths::IndexPathFromDat(datPath, schema.tableName, it->name);
                std::map<std::string, long> idx;
                // Load index. If fail (missing file), fall back to scan
                std::string ignErr;

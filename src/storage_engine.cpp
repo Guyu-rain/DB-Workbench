@@ -24,27 +24,15 @@ bool StorageEngine::BackupDatabase(const std::string& dbName, const std::string&
         return false;
     }
 
-    // Identify files to copy: dbName.*
-    // Also indexes for tables in this DB: dbName.Table.*
-    // WAL: dbName.wal
-    // Using directory iteration
-    
     try {
-        fs::path dataDir = dbms_paths::DataDirPath();
-        if (!fs::exists(dataDir)) {
-            err = "Data directory not found: " + dataDir.string();
+        fs::path dbDir = dbms_paths::DbDirPath(dbName);
+        if (!fs::exists(dbDir)) {
+            err = "Database directory not found: " + dbDir.string();
             return false;
         }
-        
-        for (const auto& entry : fs::directory_iterator(dataDir)) {
-            if (entry.is_regular_file()) {
-                std::string fname = entry.path().filename().string();
-                // Check prefix
-                if (fname.find(dbName + ".") == 0) {
-                     fs::copy_file(entry.path(), fs::path(destPath) / fname, fs::copy_options::overwrite_existing);
-                }
-            }
-        }
+        fs::path destDir = fs::path(destPath) / dbDir.filename();
+        fs::create_directories(destDir);
+        fs::copy(dbDir, destDir, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
     } catch (const std::exception& e) {
         err = "Backup failed: " + std::string(e.what());
         return false;
@@ -68,7 +56,7 @@ namespace {
 }
 
 bool StorageEngine::CreateDatabase(const std::string& dbName, std::string& err) {
-    if (!dbms_paths::EnsureDataDir(err)) return false;
+    if (!dbms_paths::EnsureDbDir(dbName, err)) return false;
 
     std::string dbf = dbms_paths::DbfPath(dbName);
     std::string dat = dbms_paths::DatPath(dbName);
@@ -106,16 +94,13 @@ bool StorageEngine::CreateDatabase(const std::string& dbName, std::string& err) 
 
 bool StorageEngine::DropDatabase(const std::string& dbName, std::string& err) {
     (void)err;
-    std::string dbf = dbms_paths::DbfPath(dbName);
-    std::string dat = dbms_paths::DatPath(dbName);
-    
-    bool ok = true;
-    if (std::remove(dbf.c_str()) != 0) {
-        // err = "Failed to delete .dbf file";
-        // maybe it didn't exist, ignore or warn
-    }
-    if (std::remove(dat.c_str()) != 0) {
-        // err = "Failed to delete .dat file";
+    try {
+        fs::path dbDir = dbms_paths::DbDirPath(dbName);
+        if (fs::exists(dbDir)) {
+            fs::remove_all(dbDir);
+        }
+    } catch (const fs::filesystem_error&) {
+        // Ignore delete errors for now.
     }
     return true;
 }
