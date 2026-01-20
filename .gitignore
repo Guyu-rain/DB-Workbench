@@ -47,3 +47,20 @@ RelWithDebInfo/
 
 # Logs
 *.log
+
+# 数据文件
+*.dat
+*.dbf
+*.idx
+*.wal
+
+# ninja
+.ninja_log
+.ninja_deps
+
+# build 目录
+out/
+build/
+
+# 单元测试
+tests/
