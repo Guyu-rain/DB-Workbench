@@ -55,7 +55,7 @@ void LogManager::SetDbName(const std::string& db_name) {
     return;
   }
   std::string err;
-  dbms_paths::EnsureDataDir(err);
+  dbms_paths::EnsureDbDir(db_name, err);
   wal_path_ = dbms_paths::WalPath(db_name);
 }
 

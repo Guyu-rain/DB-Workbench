@@ -52,6 +52,7 @@ private:
     std::string SerializeRows(const TableSchema& schema, const std::vector<Record>& rows) const;
     std::string Error(const std::string& msg, int code = 400) const;
     std::string Success(const std::string& body) const;
+    bool EnsureDefaultDb(std::string& err);
     /*std::string Error(const std::string& msg, int code = 400) const;
     std::string Success(const std::string& body = "") const;*/
 

@@ -221,25 +221,19 @@
               container.innerHTML += `<div class="msg">${esc(data.message)}</div>`;
           }
 
-          // Check for USE command to update UI
-          const match = sql.match(/^\s*use\s+([a-zA-Z0-9_]+)/i);
-          if (match) {
-             const newDb = match[1];
-             // Verify if it exists in our list (optional, but good)
-             // Or just update the selector
-             const sel = document.getElementById('dbSel');
-             sel.value = newDb;
-             state.currentDb = newDb;
-             await loadTables();
+          if (data.db && data.db !== state.currentDb) {
+             state.currentDb = data.db;
+             await loadDatabases();
+             await loadTables(true);
           }
 
           // Check for CREATE/DROP DATABASE to refresh list
-          if (/^\s*(create|drop)\s+database\s+/i.test(sql)) {
+          if (/\b(create|drop)\s+database\s+/i.test(sql)) {
               await loadDatabases();
           }
           
           // Check for Table DDL to refresh table list
-          if (/^\s*(create|drop|alter|rename)\s+table\s+/i.test(sql)) {
+          if (/\b(create|drop|alter|rename)\s+table\s+/i.test(sql)) {
               await loadTables();
           }
         }

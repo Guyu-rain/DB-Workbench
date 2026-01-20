@@ -4,6 +4,7 @@
 #include <string>
 #include <map>
 #include <unordered_set>
+#include "path_utils.h"
 #include "txn/log_manager.h"
 #include "txn/lock_manager.h"
 
@@ -127,7 +128,7 @@ bool DMLService::Match(const TableSchema& schema, const Record& rec, const std::
 }
 
 static std::string GetIdxPath(const std::string& datPath, const std::string& tableName, const std::string& fieldName) {
-    return datPath + "." + tableName + "." + fieldName + ".idx";
+    return dbms_paths::IndexPathFromDat(datPath, tableName, fieldName);
 }
 
 bool DMLService::Insert(const std::string& datPath, const TableSchema& schema, const std::vector<Record>& records, std::string& err,
@@ -189,6 +190,8 @@ bool DMLService::Insert(const std::string& datPath, const TableSchema& schema, c
       }
       return true;
   }
+
+  if (!dbms_paths::EnsureIndexDirFromDat(datPath, err)) return false;
 
   // Non-transactional path (legacy behavior)
   std::map<std::string, std::map<std::string, long>> openIndexes;
@@ -296,6 +299,7 @@ bool DMLService::Delete(const std::string& datPath, const TableSchema& schema, c
       std::vector<std::pair<long, Record>> newRecords;
       if (!engine_.ReadRecordsWithOffsets(datPath, schema, newRecords, err)) return false;
 
+      if (!dbms_paths::EnsureIndexDirFromDat(datPath, err)) return false;
       for (const auto& idxDef : schema.indexes) {
            std::map<std::string, long> idxMap;
            size_t fIdx = -1;
@@ -423,6 +427,7 @@ bool DMLService::Update(const std::string& datPath, const TableSchema& schema, c
       std::vector<std::pair<long, Record>> newRecords;
       if (!engine_.ReadRecordsWithOffsets(datPath, schema, newRecords, err)) return false;
 
+      if (!dbms_paths::EnsureIndexDirFromDat(datPath, err)) return false;
       for (const auto& idxDef : schema.indexes) {
            std::map<std::string, long> idxMap;
            size_t fIdx = -1;
