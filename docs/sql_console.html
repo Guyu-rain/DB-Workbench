@@ -124,6 +124,61 @@
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
     th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }
     th { color: var(--muted); }
+
+    .editor-container {
+      position: relative;
+      height: 150px;
+    }
+
+    #sqlInput, .sql-highlighter {
+      width: 100%;
+      height: 150px;
+      background: transparent;
+      border: none;
+      color: transparent; /* 文本透明，通过高亮层显示 */
+      font-family: 'Inconsolata', monospace;
+      font-size: 16px;
+      resize: vertical;
+      outline: none;
+      caret-color: var(--text); /* 光标颜色 */
+      position: absolute;
+      top: 0;
+      left: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow: auto;
+      margin: 0;
+      padding: 0;
+      line-height: 1.4;
+    }
+
+    .sql-highlighter {
+      pointer-events: none; /* 允许点击穿透到底层textarea */
+      z-index: 1;
+      color: var(--text);
+    }
+
+    .sql-keyword {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .sql-string {
+      color: var(--accent-2);
+    }
+
+    .sql-comment {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .sql-function {
+      color: var(--success);
+    }
+
+    .sql-number {
+      color: #a0e3c9;
+    }
   </style>
 </head>
 <body>
@@ -159,7 +214,10 @@
   <main>
     <div class="editor-box">
       <div style="color:var(--muted); font-size:13px; font-weight:600;">QUERY EDITOR</div>
-      <textarea id="sqlInput" placeholder="Enter SQL here...&#10;Examples:&#10;SELECT * FROM users&#10;INSERT INTO users VALUES(1, 'Alice', 20, 'Admin', 'Active')&#10;CREATE DATABASE mydb&#10;USE mydb"></textarea>
+      <div class="editor-container" style="position: relative;">
+        <textarea id="sqlInput" placeholder="Enter SQL here...&#10;Examples:&#10;SELECT * FROM users&#10;INSERT INTO users VALUES(1, 'Alice', 20, 'Admin', 'Active')&#10;CREATE DATABASE mydb&#10;USE mydb"></textarea>
+        <div id="sqlHighlighter" class="sql-highlighter"></div>
+      </div>
       <div class="actions">
         <button id="runBtn" onclick="runSql()">Run Query</button>
       </div>
@@ -440,6 +498,119 @@
         await loadDatabases();
         await loadTables(true); // Auto show first table on init
     })();
+
+    // SQL关键字列表（大小写不敏感）
+    const SQL_KEYWORDS = [
+      'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 
+      'DELETE', 'CREATE', 'DROP', 'ALTER', 'TABLE', 'DATABASE', 'USE', 'SHOW',
+      'DESCRIBE', 'EXPLAIN', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'ON',
+      'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET', 'ASC', 'DESC',
+      'AND', 'OR', 'NOT', 'IN', 'BETWEEN', 'LIKE', 'IS', 'NULL', 'TRUE', 'FALSE',
+      'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'AS', 'INDEX',
+      'PRIMARY KEY', 'FOREIGN KEY', 'REFERENCES', 'UNIQUE', 'CHECK', 'DEFAULT',
+      'CONSTRAINT', 'TRANSACTION', 'COMMIT', 'ROLLBACK', 'SAVEPOINT',
+      'GRANT', 'REVOKE', 'BEGIN', 'END', 'CASE', 'WHEN', 'THEN', 'ELSE'
+    ];
+
+    // 高亮SQL代码的函数
+    function highlightSQL(sql) {
+      if (!sql) return '';
+      
+      // 转义HTML特殊字符
+      let highlighted = sql.replace(/&/g, '&amp;')
+                          .replace(/</g, '&lt;')
+                          .replace(/>/g, '&gt;')
+                          .replace(/"/g, '&quot;')
+                          .replace(/'/g, '&#39;');
+      
+      // 高亮关键字（不区分大小写）
+      SQL_KEYWORDS.forEach(keyword => {
+        const regex = new RegExp(`\\b(${keyword})\\b`, 'gi');
+        highlighted = highlighted.replace(regex, '<span class="sql-keyword">$1</span>');
+      });
+      
+      // 高亮字符串（单引号和双引号）
+      highlighted = highlighted.replace(/'[^']*'/g, '<span class="sql-string">$&</span>');
+      highlighted = highlighted.replace(/"[^"]*"/g, '<span class="sql-string">$&</span>');
+      
+      // 高亮数字
+      highlighted = highlighted.replace(/\b\d+\b/g, '<span class="sql-number">$&</span>');
+      
+      // 高亮注释（-- 单行注释）
+      highlighted = highlighted.replace(/--.*$/gm, '<span class="sql-comment">$&</span>');
+      
+      // 高亮多行注释 /* */
+      highlighted = highlighted.replace(/\/\*[\s\S]*?\*\//g, '<span class="sql-comment">$&</span>');
+      
+      // 处理换行符
+      highlighted = highlighted.replace(/\n/g, '<br>');
+      highlighted = highlighted.replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+      highlighted = highlighted.replace(/ /g, '&nbsp;');
+      
+      return highlighted;
+    }
+
+    // 更新高亮显示
+    function updateHighlight() {
+      const sqlInput = document.getElementById('sqlInput');
+      const highlighter = document.getElementById('sqlHighlighter');
+      const sql = sqlInput.value;
+      
+      highlighter.innerHTML = highlightSQL(sql);
+    }
+
+    // 同步滚动
+    function syncScroll() {
+      const sqlInput = document.getElementById('sqlInput');
+      const highlighter = document.getElementById('sqlHighlighter');
+      highlighter.scrollTop = sqlInput.scrollTop;
+      highlighter.scrollLeft = sqlInput.scrollLeft;
+    }
+
+    // 初始化高亮功能
+    function initSQLHighlighter() {
+      const sqlInput = document.getElementById('sqlInput');
+      const highlighter = document.getElementById('sqlHighlighter');
+      
+      // 初始高亮
+      updateHighlight();
+      
+      // 添加事件监听器
+      sqlInput.addEventListener('input', updateHighlight);
+      sqlInput.addEventListener('scroll', syncScroll);
+      sqlInput.addEventListener('keydown', function(e) {
+        // 处理Tab键（插入4个空格）
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const start = this.selectionStart;
+          const end = this.selectionEnd;
+          const value = this.value;
+          
+          this.value = value.substring(0, start) + '    ' + value.substring(end);
+          this.selectionStart = this.selectionEnd = start + 4;
+          
+          updateHighlight();
+        }
+      });
+      
+      // 处理粘贴事件
+      sqlInput.addEventListener('paste', function(e) {
+        // 允许默认粘贴行为，然后更新高亮
+        setTimeout(updateHighlight, 0);
+      });
+    }
+
+    // 在页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', function() {
+      // 现有的初始化代码
+      (async () => {
+        await loadDatabases();
+        await loadTables(true);
+      })();
+      
+      // 初始化SQL高亮
+      initSQLHighlighter();
+    });
   </script>
 </body>
 </html>
