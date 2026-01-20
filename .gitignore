@@ -49,6 +49,7 @@ RelWithDebInfo/
 *.log
 
 # 数据文件
+/data
 *.dat
 *.dbf
 *.idx
