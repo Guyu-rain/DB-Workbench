@@ -61,3 +61,6 @@ RelWithDebInfo/
 # build 目录
 out/
 build/
+
+# 单元测试
+tests/
