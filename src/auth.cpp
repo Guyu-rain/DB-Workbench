@@ -234,7 +234,12 @@ bool AuthManager::CheckPermission(const std::string& user, const std::string& ta
 
 bool AuthManager::Login(const std::string& user, const std::string& pass, std::string& token, std::string& err) {
     TableSchema uSchema;
-    if(!engine_.LoadSchema(GetSystemDbf(), kUserTable, uSchema, err)) { err="System/User table missing"; return false; }
+    if(!engine_.LoadSchema(GetSystemDbf(), kUserTable, uSchema, err)) {
+        std::string initErr;
+        Init(initErr);
+        err.clear();
+        if(!engine_.LoadSchema(GetSystemDbf(), kUserTable, uSchema, err)) { err="System/User table missing"; return false; }
+    }
     
     std::vector<Condition> conds;
     { Condition c; c.fieldName="username"; c.op="="; c.value=user; conds.push_back(c); }
