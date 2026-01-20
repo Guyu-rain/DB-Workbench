@@ -11,6 +11,7 @@
 #include "dml.h"
 #include "query.h"
 #include "storage_engine.h"
+#include "path_utils.h"
 
 #include "txn/log_manager.h"
 #include "txn/txn_manager.h"
@@ -73,22 +74,33 @@ int main() {
     DMLService dml(engine);
     QueryService query(engine);
 
-    const std::string dbf = "MyDB.dbf";
-    const std::string dat = "MyDB.dat";
+    const std::string default_db = "MyDB";
+    std::string err;
+    dbms_paths::EnsureDbDir(default_db, err);
+
+    const std::string dbf = dbms_paths::DbfPath(default_db);
+    const std::string dat = dbms_paths::DatPath(default_db);
 
     TableSchema schema;
     if (!EnsureBootstrap(engine, ddl, dml, dbf, dat, schema)) {
         return 1;
     }
 
-    // --- Cross-platform recovery scan: iterate current directory for *.dbf ---
+    // --- Cross-platform recovery scan: iterate data directory for *.dbf ---
     TxnId maxTxn = 0;
     LSN   maxLsn = 0;
 
     try {
-        const fs::path cwd = fs::current_path();
+        std::string recErr;
+        if (!dbms_paths::EnsureDataDir(recErr)) {
+            std::cerr << "[Recovery] data dir error: " << recErr << "\n";
+        }
+        const fs::path data_dir = dbms_paths::DataDirPath();
+        if (!fs::exists(data_dir)) {
+            std::cerr << "[Recovery] data dir not found: " << data_dir << "\n";
+        }
 
-        for (const auto& entry : fs::directory_iterator(cwd)) {
+        for (const auto& entry : fs::recursive_directory_iterator(data_dir)) {
             if (!entry.is_regular_file()) continue;
 
             const fs::path p = entry.path();
@@ -112,7 +124,7 @@ int main() {
         // 扫描失败不一定要退出，取决于你想要的策略；这里选择继续启动
     }
 
-    LogManager log("MyDB");
+    LogManager log(default_db);
     TxnManager txn_manager(engine, log);
     LockManager lock_manager;
 

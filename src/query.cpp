@@ -7,6 +7,7 @@
 #include <set>
 #include <functional>
 #include "txn/lock_manager.h"
+#include "path_utils.h"
 
 namespace {
 std::string Lower(const std::string& s) {
@@ -128,6 +129,13 @@ bool QueryService::ExecuteSubQuery(const std::string& datPath, const std::string
     return Select(datPath, dbfPath, sourceSchema, plan, out, err);
 }
 
+// Overload for correlated subquery support
+bool QueryService::ExecuteSubQuery(const std::string& datPath, const std::string& dbfPath, const QueryPlan& plan, std::vector<Record>& out, std::string& err, const Record* outerRec, const TableSchema* outerSchema) {
+    // For now, just delegate to the non-correlated version
+    // In a full implementation, we would pass outerRec and outerSchema through to field resolution
+    return ExecuteSubQuery(datPath, dbfPath, plan, out, err);
+}
+
 static bool GetFieldValueForOrder(const TableSchema& schema, const Record& rec, const std::string& fieldName,
                                   const std::map<std::string, std::string>& aliasMap, std::string& outVal) {
     std::string name = fieldName;
@@ -137,7 +145,23 @@ static bool GetFieldValueForOrder(const TableSchema& schema, const Record& rec, 
 }
 
 bool QueryService::MatchConditions(const TableSchema& schema, const Record& rec, const std::vector<Condition>& conds, const std::string& datPath, const std::string& dbfPath) {
+  return MatchConditions(schema, rec, conds, datPath, dbfPath, nullptr, nullptr);
+}
+
+bool QueryService::MatchConditions(const TableSchema& schema, const Record& rec, const std::vector<Condition>& conds, const std::string& datPath, const std::string& dbfPath, const Record* outerRec, const TableSchema* outerSchema) {
   auto matchSingle = [&](const Condition& cond) {
+    // Handle EXISTS/NOT EXISTS
+    if (cond.op == "EXISTS" || cond.op == "NOT EXISTS") {
+        if (cond.isSubQuery && cond.subQueryPlan) {
+            std::vector<Record> subRows;
+            std::string subErr;
+            if (!ExecuteSubQuery(datPath, dbfPath, *cond.subQueryPlan, subRows, subErr, outerRec, outerSchema)) return false;
+            bool hasRows = !subRows.empty();
+            return (cond.op == "EXISTS") ? hasRows : !hasRows;
+        }
+        return false;
+    }
+    
     if (cond.fieldName.empty()) return true;
     std::string val;
     if (!GetFieldValue(schema, rec, cond.fieldName, val)) return false;
@@ -148,7 +172,7 @@ bool QueryService::MatchConditions(const TableSchema& schema, const Record& rec,
     if (cond.isSubQuery && cond.subQueryPlan) {
         std::vector<Record> subRows;
         std::string subErr;
-        if (!ExecuteSubQuery(datPath, dbfPath, *cond.subQueryPlan, subRows, subErr)) return false;
+        if (!ExecuteSubQuery(datPath, dbfPath, *cond.subQueryPlan, subRows, subErr, outerRec, outerSchema)) return false;
         
         if (cond.op == "IN") {
             for(const auto& r : subRows) {
@@ -171,6 +195,90 @@ bool QueryService::MatchConditions(const TableSchema& schema, const Record& rec,
     auto asNumber = [](const std::string& s, double& out) {
       try { size_t i=0; out = std::stod(s, &i); return i == s.size(); } catch (...) { return false; }
     };
+
+    if (cond.op == "BETWEEN") {
+        if (cond.values.size() != 2) return false;
+        std::string minVal = NormalizeValue(cond.values[0]);
+        std::string maxVal = NormalizeValue(cond.values[1]);
+        
+        double valNum = 0, minNum = 0, maxNum = 0;
+        if (asNumber(val, valNum) && asNumber(minVal, minNum) && asNumber(maxVal, maxNum)) {
+            return valNum >= minNum && valNum <= maxNum;
+        }
+        // String comparison as fallback
+        return val >= minVal && val <= maxVal;
+    }
+
+    if (cond.op == "LIKE") {
+        std::string pattern = NormalizeValue(cond.value);
+        
+        // Convert SQL LIKE pattern to simple matching
+        // %: matches any sequence of characters (including empty)
+        // Note: SQL also supports _ for single character, but implementing % first
+        
+        if (pattern.empty()) return val.empty();
+        
+        // Case 1: %text% - contains
+        if (pattern.size() >= 2 && pattern.front() == '%' && pattern.back() == '%') {
+            std::string searchStr = pattern.substr(1, pattern.size() - 2);
+            return val.find(searchStr) != std::string::npos;
+        }
+        
+        // Case 2: %text - ends with
+        if (pattern.size() >= 1 && pattern.front() == '%') {
+            std::string suffix = pattern.substr(1);
+            if (val.size() >= suffix.size()) {
+                return val.substr(val.size() - suffix.size()) == suffix;
+            }
+            return false;
+        }
+        
+        // Case 3: text% - starts with
+        if (pattern.size() >= 1 && pattern.back() == '%') {
+            std::string prefix = pattern.substr(0, pattern.size() - 1);
+            if (val.size() >= prefix.size()) {
+                return val.substr(0, prefix.size()) == prefix;
+            }
+            return false;
+        }
+        
+        // Case 4: exact match (no wildcards)
+        return val == pattern;
+    }
+
+    if (cond.op == "NOT LIKE") {
+        std::string pattern = NormalizeValue(cond.value);
+        
+        // Use the same LIKE matching logic but negate the result
+        if (pattern.empty()) return !val.empty();
+        
+        // Case 1: %text% - does not contain
+        if (pattern.size() >= 2 && pattern.front() == '%' && pattern.back() == '%') {
+            std::string searchStr = pattern.substr(1, pattern.size() - 2);
+            return val.find(searchStr) == std::string::npos;
+        }
+        
+        // Case 2: %text - does not end with
+        if (pattern.size() >= 1 && pattern.front() == '%') {
+            std::string suffix = pattern.substr(1);
+            if (val.size() >= suffix.size()) {
+                return val.substr(val.size() - suffix.size()) != suffix;
+            }
+            return true;
+        }
+        
+        // Case 3: text% - does not start with
+        if (pattern.size() >= 1 && pattern.back() == '%') {
+            std::string prefix = pattern.substr(0, pattern.size() - 1);
+            if (val.size() >= prefix.size()) {
+                return val.substr(0, prefix.size()) != prefix;
+            }
+            return true;
+        }
+        
+        // Case 4: not exact match (no wildcards)
+        return val != pattern;
+    }
 
     if (cond.op == "IN" && !cond.isSubQuery) {
         for (const auto& v : cond.values) {
@@ -268,7 +376,7 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
            auto it = std::find_if(schema.indexes.begin(), schema.indexes.end(), [&](const IndexDef& d){ return d.fieldName == c.fieldName; });
            if (it != schema.indexes.end()) {
                // Use index name for file path
-               std::string idxPath = datPath + "." + schema.tableName + "." + it->name + ".idx";
+               std::string idxPath = dbms_paths::IndexPathFromDat(datPath, schema.tableName, it->name);
                std::map<std::string, long> idx;
                // Load index. If fail (missing file), fall back to scan
                std::string ignErr;
@@ -521,6 +629,32 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
               aggOut.push_back(rec);
           }
 
+          // Apply HAVING filter
+          if (!plan.havingConditions.empty()) {
+              // Build a temporary schema that maps aggregate expressions to their field names
+              TableSchema havingSchema;
+              for (const auto& sel : plan.selectExprs) {
+                  Field f;
+                  if (sel.isAggregate) {
+                      // Add field with aggregate expression name like "COUNT(*)"
+                      f.name = sel.agg.func + "(" + sel.agg.field + ")";
+                      havingSchema.fields.push_back(f);
+                  } else {
+                      // Add field with actual name
+                      f.name = sel.field;
+                      havingSchema.fields.push_back(f);
+                  }
+              }
+              
+              std::vector<Record> havingFiltered;
+              for (const auto& rec : aggOut) {
+                  if (MatchConditions(havingSchema, rec, plan.havingConditions, datPath, dbfPath)) {
+                      havingFiltered.push_back(rec);
+                  }
+              }
+              aggOut = havingFiltered;
+          }
+
           if (!plan.orderBy.empty()) {
       std::map<std::string, std::string> aliasMap;
       for (const auto& sel : plan.selectExprs) {
@@ -528,6 +662,11 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
           if (!sel.alias.empty()) {
               aliasMap[Lower(sel.field)] = name;
               aliasMap[Lower(sel.alias)] = name;
+          }
+          // Map aggregate expressions like "COUNT(*)" to their field names
+          if (sel.isAggregate) {
+              std::string exprName = sel.agg.func + "(" + sel.agg.field + ")";
+              aliasMap[Lower(exprName)] = name;
           }
       }
 
@@ -615,6 +754,54 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
           };
 
           std::sort(matched.begin(), matched.end(), cmp);
+      }
+
+      // Handle SELECT list subqueries
+      if (!plan.selectExprs.empty()) {
+          bool hasSubQuery = false;
+          for (const auto& sel : plan.selectExprs) {
+              if (sel.isSubQuery) {
+                  hasSubQuery = true;
+                  break;
+              }
+          }
+          
+          if (hasSubQuery) {
+              std::vector<Record> finalOut;
+              for (const auto& r : matched) {
+                  Record outRec;
+                  outRec.valid = r.valid;
+                  
+                  for (const auto& sel : plan.selectExprs) {
+                      if (sel.isSubQuery && sel.subQueryPlan) {
+                          // Execute subquery for each row
+                          std::vector<Record> subResult;
+                          std::string subErr;
+                          if (!ExecuteSubQuery(datPath, dbfPath, *sel.subQueryPlan, subResult, subErr, &r, &combinedSchema)) {
+                              err = "Subquery in SELECT failed: " + subErr;
+                              return false;
+                          }
+                          // Take first value from first row
+                          if (!subResult.empty() && !subResult[0].values.empty()) {
+                              outRec.values.push_back(subResult[0].values[0]);
+                          } else {
+                              outRec.values.push_back("NULL");
+                          }
+                      } else {
+                          // Regular field
+                          std::string val;
+                          if (GetFieldValue(combinedSchema, r, sel.field, val)) {
+                              outRec.values.push_back(val);
+                          } else {
+                              outRec.values.push_back("NULL");
+                          }
+                      }
+                  }
+                  finalOut.push_back(outRec);
+              }
+              out = finalOut;
+              return true;
+          }
       }
 
       for (const auto& r : matched) out.push_back(Project(combinedSchema, r, plan.projection));
@@ -873,6 +1060,32 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
               }
           }
           aggOut.push_back(rec);
+      }
+
+      // Apply HAVING filter
+      if (!plan.havingConditions.empty()) {
+          // Build a temporary schema that maps aggregate expressions to their field names
+          TableSchema havingSchema;
+          for (const auto& sel : plan.selectExprs) {
+              Field f;
+              if (sel.isAggregate) {
+                  // Add field with aggregate expression name like "COUNT(*)"
+                  f.name = sel.agg.func + "(" + sel.agg.field + ")";
+                  havingSchema.fields.push_back(f);
+              } else {
+                  // Add field with actual name
+                  f.name = sel.field;
+                  havingSchema.fields.push_back(f);
+              }
+          }
+          
+          std::vector<Record> havingFiltered;
+          for (const auto& rec : aggOut) {
+              if (MatchConditions(havingSchema, rec, plan.havingConditions, datPath, dbfPath)) {
+                  havingFiltered.push_back(rec);
+              }
+          }
+          aggOut = havingFiltered;
       }
 
       if (!plan.orderBy.empty()) {

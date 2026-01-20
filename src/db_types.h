@@ -38,9 +38,9 @@ struct QueryPlan;
 // Condition (simple equality/contains)
 struct Condition {
   std::string fieldName;
-  std::string op;       // supported: "=", "!=", "CONTAINS", "IN", ">", ">=", "<", "<="
+  std::string op;       // supported: "=", "!=", "CONTAINS", "IN", ">", ">=", "<", "<=", "BETWEEN", "LIKE", "NOT LIKE", "EXISTS", "NOT EXISTS"
   std::string value;
-  std::vector<std::string> values; // for IN operator
+  std::vector<std::string> values; // for IN operator or BETWEEN (stores [min, max])
   
   // Subquery support
   bool isSubQuery = false;
@@ -58,6 +58,10 @@ struct SelectExpr {
   std::string field;    // column name or expression
   AggregateExpr agg;    // aggregate detail when isAggregate = true
   std::string alias;    // output alias
+  
+  // Subquery support in SELECT list
+  bool isSubQuery = false;
+  std::shared_ptr<QueryPlan> subQueryPlan;
 };
 
 enum class JoinType { kInner, kLeft, kRight };
@@ -71,6 +75,7 @@ struct QueryPlan {
   std::vector<std::string> groupBy;     // GROUP BY columns
   std::vector<AggregateExpr> aggregates; // Aggregates in SELECT
   std::vector<SelectExpr> selectExprs;  // SELECT list in order
+  std::vector<Condition> havingConditions;  // HAVING clause conditions
 
   // Join support
   std::string joinTable;       // Table to join with
