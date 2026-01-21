@@ -189,15 +189,10 @@ bool StorageEngine::LoadSchemas(const std::string& dbfPath,
 
         // Read Indexes
         uint32_t idxCount = 0;
-        // Try read. If fails (EOF or old format), we might assume 0, but 'ReadUInt32' moves cursor.
-        // For simplicity in this task, we assume file format matches.
         if (ReadUInt32(ifs, idxCount)) {
             for (uint32_t k = 0; k < idxCount; ++k) {
                 IndexDef idx;
                 if (!ReadString(ifs, idx.name)) return false;
-                // Support backward compatibility or assume new format?
-                // If we want to be safe, we might fail here on old DB files.
-                // Assuming new format.
                 if (!ReadString(ifs, idx.fieldName)) return false;
                 char u = 0;
                 ifs.read(&u, 1);
@@ -205,11 +200,88 @@ bool StorageEngine::LoadSchemas(const std::string& dbfPath,
                 schema.indexes.push_back(idx);
             }
         } else {
-            // checking if EOF caused this
             if (ifs.eof()) {
-                // acceptable for last table in old format? 
-                // But ReadUInt32 would set failbit.
-                ifs.clear(); 
+                ifs.clear();
+            } else {
+                return false;
+            }
+        }
+
+        // Read Foreign Keys (optional for backward compatibility)
+        {
+            std::streampos fkPos = ifs.tellg();
+            uint32_t fkCount = 0;
+            bool hasFk = false;
+            if (ifs.peek() == EOF || ifs.peek() == kTableSep) {
+                // old format: no FK section
+                hasFk = false;
+            } else if (ReadUInt32(ifs, fkCount)) {
+                // Try parsing FK section; if it fails, roll back for old format.
+                std::vector<ForeignKeyDef> fks;
+                bool ok = true;
+                if (fkCount > 1024) ok = false;
+                for (uint32_t k = 0; ok && k < fkCount; ++k) {
+                    ForeignKeyDef fk;
+                    if (!ReadString(ifs, fk.name)) { ok = false; break; }
+                    uint32_t colCount = 0;
+                    if (!ReadUInt32(ifs, colCount)) { ok = false; break; }
+                    for (uint32_t i = 0; ok && i < colCount; ++i) {
+                        std::string col;
+                        if (!ReadString(ifs, col)) { ok = false; break; }
+                        fk.columns.push_back(col);
+                    }
+                    if (!ok) break;
+                    if (!ReadString(ifs, fk.refTable)) { ok = false; break; }
+                    uint32_t refCount = 0;
+                    if (!ReadUInt32(ifs, refCount)) { ok = false; break; }
+                    for (uint32_t i = 0; ok && i < refCount; ++i) {
+                        std::string col;
+                        if (!ReadString(ifs, col)) { ok = false; break; }
+                        fk.refColumns.push_back(col);
+                    }
+                    if (!ok) break;
+                    char onDel = 0;
+                    char onUpd = 0;
+                    ifs.read(&onDel, 1);
+                    ifs.read(&onUpd, 1);
+                    if (!ifs) { ok = false; break; }
+                    fk.onDelete = static_cast<ReferentialAction>(onDel);
+                    fk.onUpdate = static_cast<ReferentialAction>(onUpd);
+                    fks.push_back(fk);
+                }
+                if (ok) {
+                    hasFk = true;
+                    schema.foreignKeys = fks;
+                } else {
+                    ifs.clear();
+                    ifs.seekg(fkPos);
+                    hasFk = false;
+                }
+            } else {
+                if (ifs.eof()) {
+                    ifs.clear();
+                } else {
+                    return false;
+                }
+            }
+            (void)hasFk;
+        }
+
+        // View metadata (optional; old files may omit)
+        if (ifs.peek() != EOF && ifs.peek() != kTableSep) {
+            std::streampos viewPos = ifs.tellg();
+            char viewFlag = 0;
+            ifs.read(&viewFlag, 1);
+            if (!ifs) return false;
+            if (viewFlag == 0 || viewFlag == 1) {
+                schema.isView = (viewFlag != 0);
+                if (schema.isView) {
+                    if (!ReadString(ifs, schema.viewSql)) return false;
+                }
+            } else {
+                // Not a view flag; rewind for forward compatibility.
+                ifs.clear();
+                ifs.seekg(viewPos);
             }
         }
 
@@ -246,6 +318,32 @@ bool StorageEngine::SaveSchemas(const std::string& dbfPath, const std::vector<Ta
             if (!WriteString(ofs, idx.fieldName)) return false;
             char u = idx.isUnique ? 1 : 0;
             ofs.write(&u, 1);
+        }
+
+        // Save Foreign Keys
+        if (!WriteUInt32(ofs, static_cast<uint32_t>(schema.foreignKeys.size()))) return false;
+        for (const auto& fk : schema.foreignKeys) {
+            if (!WriteString(ofs, fk.name)) return false;
+            if (!WriteUInt32(ofs, static_cast<uint32_t>(fk.columns.size()))) return false;
+            for (const auto& col : fk.columns) {
+                if (!WriteString(ofs, col)) return false;
+            }
+            if (!WriteString(ofs, fk.refTable)) return false;
+            if (!WriteUInt32(ofs, static_cast<uint32_t>(fk.refColumns.size()))) return false;
+            for (const auto& col : fk.refColumns) {
+                if (!WriteString(ofs, col)) return false;
+            }
+            char onDel = static_cast<char>(fk.onDelete);
+            char onUpd = static_cast<char>(fk.onUpdate);
+            ofs.write(&onDel, 1);
+            ofs.write(&onUpd, 1);
+        }
+
+        // View metadata (backward compatible: old files omit these bytes)
+        char viewFlag = schema.isView ? 1 : 0;
+        ofs.write(&viewFlag, 1);
+        if (schema.isView) {
+            if (!WriteString(ofs, schema.viewSql)) return false;
         }
     }
     return static_cast<bool>(ofs);

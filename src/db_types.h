@@ -19,11 +19,29 @@ struct IndexDef {
     bool isUnique = false;
 };
 
+enum class ReferentialAction {
+  kRestrict,
+  kCascade,
+  kSetNull
+};
+
+struct ForeignKeyDef {
+  std::string name;
+  std::vector<std::string> columns;
+  std::string refTable;
+  std::vector<std::string> refColumns;
+  ReferentialAction onDelete = ReferentialAction::kRestrict;
+  ReferentialAction onUpdate = ReferentialAction::kRestrict;
+};
+
 // Table schema
 struct TableSchema {
   std::string tableName;
   std::vector<Field> fields;
   std::vector<IndexDef> indexes; // Fields that have an index
+  std::vector<ForeignKeyDef> foreignKeys;
+  bool isView = false;            // view flag
+  std::string viewSql;            // original CREATE VIEW SELECT text
 };
 
 // Single record
@@ -81,7 +99,9 @@ struct QueryPlan {
   std::string joinTable;       // Table to join with
   std::string joinOnLeft;      // field in primary table
   std::string joinOnRight;     // field in join table
+  std::vector<std::pair<std::string, std::string>> joinPairs; // multi-column joins
   JoinType joinType = JoinType::kInner;
+  bool isNaturalJoin = false;
   
   std::string tableAlias;      // Alias for main table
   std::string joinTableAlias;  // Alias for joined table

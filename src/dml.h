@@ -12,11 +12,12 @@ class DMLService {
  public:
   explicit DMLService(StorageEngine& engine) : engine_(engine) {}
 
-  bool Insert(const std::string& datPath, const TableSchema& schema, const std::vector<Record>& records, std::string& err,
+  bool Insert(const std::string& datPath, const std::string& dbfPath, const TableSchema& schema, const std::vector<Record>& records, std::string& err,
               Txn* txn = nullptr, LogManager* log = nullptr, LockManager* lock_manager = nullptr);
-  bool Delete(const std::string& datPath, const TableSchema& schema, const std::vector<Condition>& conditions, std::string& err,
+  bool Delete(const std::string& datPath, const std::string& dbfPath, const TableSchema& schema, const std::vector<Condition>& conditions,
+              ReferentialAction action, bool actionSpecified, std::string& err,
               Txn* txn = nullptr, LogManager* log = nullptr, LockManager* lock_manager = nullptr);
-  bool Update(const std::string& datPath, const TableSchema& schema, const std::vector<Condition>& conditions,
+  bool Update(const std::string& datPath, const std::string& dbfPath, const TableSchema& schema, const std::vector<Condition>& conditions,
               const std::vector<std::pair<std::string, std::string>>& assignments, std::string& err,
               Txn* txn = nullptr, LogManager* log = nullptr, LockManager* lock_manager = nullptr);
   

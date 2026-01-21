@@ -1,439 +1,777 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SQL Console - DB Workbench</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Inconsolata:wght@500&display=swap" rel="stylesheet">
-  <style>
-    /* Reuse styles from workbench.html for consistency */
-    :root {
-      --bg: #0f1115;
-      --panel: #171b22;
-      --panel-strong: #1e2430;
-      --text: #e9edf5;
-      --muted: #8a93a5;
-      --accent: #a0e3c9;
-      --accent-2: #ffaf45;
-      --border: #232a36;
-      --danger: #ff5f6d;
-      --success: #6dffaaa1;
-      --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Space Grotesk", "Inconsolata", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: grid;
-      grid-template-columns: 260px 1fr;
-      grid-template-rows: 64px 1fr;
-      grid-template-areas: "sidebar header" "sidebar main";
-    }
-    aside {
-      grid-area: sidebar;
-      background: rgba(23, 27, 34, 0.9);
-      border-right: 1px solid var(--border);
-      padding: 18px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-    header {
-      grid-area: header;
-      display: flex;
-      align-items: center;
-      padding: 12px 20px;
-      background: rgba(23, 27, 34, 0.7);
-      border-bottom: 1px solid var(--border);
-    }
-    main {
-      grid-area: main;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-    .logo { font-weight: 700; letter-spacing: 0.6px; margin-bottom: 20px; cursor: pointer; }
-    .logo span { background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #0d1016; border-radius: 10px; padding: 8px 10px; }
-    
-    .nav { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
-    .nav li a {
-      text-decoration: none;
-      color: inherit;
-      display: block;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid transparent;
-      transition: all 0.2s;
-    }
-    .nav li a:hover { background: var(--panel); border-color: var(--border); }
-    .nav li.active a { border-color: var(--accent); background: var(--panel-strong); }
-    .nav-section { color: var(--muted); font-size: 12px; letter-spacing: 0.5px; margin-top:20px; margin-bottom: 6px; font-weight: 500;}
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SQL Console - DB Workbench</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Inconsolata:wght@500&display=swap" rel="stylesheet">
+    <style>
+        /* Reuse styles from workbench.html for consistency */
+        :root {
+            --bg: #0f1115;
+            --panel: #171b22;
+            --panel-strong: #1e2430;
+            --text: #e9edf5;
+            --muted: #8a93a5;
+            --accent: #a0e3c9;
+            --accent-2: #ffaf45;
+            --border: #232a36;
+            --danger: #ff5f6d;
+            --success: #6dffaaa1;
+            --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        }
 
-    .editor-box {
-      background: var(--panel);
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      min-height: 200px;
-    }
-    textarea {
-      width: 100%;
-      height: 150px;
-      background: transparent;
-      border: none;
-      color: var(--text);
-      font-family: 'Inconsolata', monospace;
-      font-size: 16px;
-      resize: vertical;
-      outline: none;
-    }
-    .actions { display: flex; justify-content: flex-end; }
-    button {
-      background: var(--accent);
-      color: #0d1016;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    button:hover { filter: brightness(1.1); }
-    button:disabled { opacity: 0.6; cursor: wait; }
+        * {
+            box-sizing: border-box;
+        }
 
-    .result-box {
-      flex: 1;
-      background: var(--panel-strong);
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      padding: 16px;
-      overflow: auto;
-    }
-    .msg { font-family: monospace; white-space: pre-wrap; }
-    .msg.success { color: var(--accent); }
-    .msg.error { color: var(--danger); }
+        body {
+            margin: 0;
+            font-family: "Space Grotesk", "Inconsolata", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            grid-template-rows: 64px 1fr;
+            grid-template-areas: "sidebar header" "sidebar main";
+        }
 
-    table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); }
-  </style>
+        aside {
+            grid-area: sidebar;
+            background: rgba(23, 27, 34, 0.9);
+            border-right: 1px solid var(--border);
+            padding: 18px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        header {
+            grid-area: header;
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            background: rgba(23, 27, 34, 0.7);
+            border-bottom: 1px solid var(--border);
+        }
+
+        main {
+            grid-area: main;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .logo {
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+
+            .logo span {
+                background: linear-gradient(120deg, var(--accent), var(--accent-2));
+                color: #0d1016;
+                border-radius: 10px;
+                padding: 8px 10px;
+            }
+
+        .nav {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+            .nav li a {
+                text-decoration: none;
+                color: inherit;
+                display: block;
+                padding: 10px 12px;
+                border-radius: 10px;
+                border: 1px solid transparent;
+                transition: all 0.2s;
+            }
+
+                .nav li a:hover {
+                    background: var(--panel);
+                    border-color: var(--border);
+                }
+
+            .nav li.active a {
+                border-color: var(--accent);
+                background: var(--panel-strong);
+            }
+
+        .nav-section {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            margin-top: 20px;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .editor-box {
+            background: var(--panel);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 200px;
+        }
+
+        /* SQL 编辑器容器样式 */
+        .sql-editor-container {
+            position: relative;
+            width: 100%;
+            min-height: 150px;
+            max-height: 400px;
+            overflow: hidden; /* 由 textarea 负责滚动，避免双滚动条干扰光标 */
+            background: var(--panel-strong);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        #sqlInput {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            border: none;
+            color: transparent;
+            font-family: 'Inconsolata', monospace;
+            font-size: 16px;
+            line-height: 1.5;
+            font-weight: 500;
+            font-variant-ligatures: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            resize: none;
+            outline: none;
+            caret-color: var(--text);
+            padding: 12px;
+            margin: 0;
+            z-index: 2;
+            overflow: auto; /* textarea 提供滚动，保证光标与内容同步 */
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        /* 隐藏 textarea 的滚动条，避免双滚动条 */
+        #sqlInput::-webkit-scrollbar,
+        .sql-highlight::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+        }
+
+        .sql-highlight {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            min-height: 100%;
+            padding: 12px;
+            font-family: 'Inconsolata', monospace;
+            font-size: 16px;
+            line-height: 1.5;
+            font-weight: 500;
+            font-variant-ligatures: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            pointer-events: none;
+            z-index: 1;
+            overflow: hidden;
+            transform: translate(0, 0);
+            transform-origin: top left;
+            will-change: transform;
+        }
+
+        .keyword {
+            color: #ffaf45 !important; /* var(--accent-2) */
+        }
+
+        .string {
+            color: #a0e3c9 !important; /* var(--accent) */
+        }
+
+        .number {
+            color: #5d8ef2 !important;
+        }
+
+        .comment {
+            color: #8a93a5 !important; /* var(--muted) */
+            font-style: italic;
+        }
+
+        .operator {
+            color: #ff5f6d !important; /* var(--danger) */
+        }
+
+        /* 确保高亮层正确显示 */
+        .sql-highlight span {
+            display: inline !important;
+            background: transparent !important;
+        }
+
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 10px;
+        }
+
+        button {
+            background: var(--accent);
+            color: #0d1016;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+            button:hover {
+                filter: brightness(1.1);
+            }
+
+            button:disabled {
+                opacity: 0.6;
+                cursor: wait;
+            }
+
+        .result-box {
+            flex: 1;
+            background: var(--panel-strong);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            padding: 16px;
+            overflow: auto;
+        }
+
+        .msg {
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+
+            .msg.success {
+                color: var(--accent);
+            }
+
+            .msg.error {
+                color: var(--danger);
+            }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            color: var(--muted);
+        }
+    </style>
 </head>
 <body>
-  <aside>
-    <div class="logo" onclick="location.href='/'"><span>DB</span> Workbench</div>
-    <ul class="nav">
-      <li><a href="/">Dashboard</a></li>
-      <li class="active"><a href="/sql">SQL Console</a></li>
-    </ul>
+    <aside>
+        <div class="logo" onclick="location.href='/'"><span>DB</span> Workbench</div>
+        <ul class="nav">
+            <li><a href="/">Dashboard</a></li>
+            <li class="active"><a href="/sql">SQL Console</a></li>
+        </ul>
 
-    <div class="nav-section">数据库</div>
-    <ul class="nav">
-      <li style="padding:0;">
-          <select id="dbSel" onchange="onDatabaseChange()" style="width:100%; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px; margin-bottom:8px; outline:none;">
-            <!-- Dynamic -->
-          </select>
-          <button onclick="createDatabase()" style="width:100%; background:var(--accent); color:#0a0d12; border:none; border-radius:8px; padding:8px; cursor:pointer; font-weight:600;">
-            + 创建数据库
-          </button>
-      </li>
-    </ul>
+        <div class="nav-section">数据库</div>
+        <ul class="nav">
+            <li style="padding:0;">
+                <select id="dbSel" onchange="onDatabaseChange()" style="width:100%; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px; margin-bottom:8px; outline:none;">
+                    <!-- Dynamic -->
+                </select>
+                <button onclick="createDatabase()" style="width:100%; background:var(--accent); color:#0a0d12; border:none; border-radius:8px; padding:8px; cursor:pointer; font-weight:600;">
+                    + 创建数据库
+                </button>
+            </li>
+        </ul>
 
-    <div class="nav-section">数据表</div>
-    <ul class="nav" id="tableListNav" style="overflow-y:auto; flex:1;">
-    </ul>
-  </aside>
+        <div class="nav-section">数据表</div>
+        <ul class="nav" id="tableListNav" style="overflow-y:auto; flex:1;">
+        </ul>
+    </aside>
 
-  <header style="justify-content:space-between; display:flex; align-items:center;">
-    <div style="font-weight:600; font-size:18px;">Execute SQL</div>
-    <button onclick="doLogout()" style="background:transparent; border:1px solid var(--danger); color:var(--danger); padding:6px 14px; font-size:13px; border-radius:6px; cursor:pointer;">Logout</button>
-  </header>
-  
-  <main>
-    <div class="editor-box">
-      <div style="color:var(--muted); font-size:13px; font-weight:600;">QUERY EDITOR</div>
-      <textarea id="sqlInput" placeholder="Enter SQL here...&#10;Examples:&#10;SELECT * FROM users&#10;INSERT INTO users VALUES(1, 'Alice', 20, 'Admin', 'Active')&#10;CREATE DATABASE mydb&#10;USE mydb"></textarea>
-      <div class="actions">
-        <button id="runBtn" onclick="runSql()">Run Query</button>
-      </div>
-    </div>
+    <header style="justify-content:space-between; display:flex; align-items:center;">
+        <div style="font-weight:600; font-size:18px;">Execute SQL</div>
+        <button onclick="doLogout()" style="background:transparent; border:1px solid var(--danger); color:var(--danger); padding:6px 14px; font-size:13px; border-radius:6px; cursor:pointer;">Logout</button>
+    </header>
 
-    <div class="result-box" id="resultContainer">
-      <div style="color:var(--muted); text-align:center; padding-top:40px;">Results will appear here</div>
-    </div>
-  </main>
+    <main>
+        <div class="editor-box">
+            <div style="color:var(--muted); font-size:13px; font-weight:600;">QUERY EDITOR</div>
+            <div class="sql-editor-container">
+                <textarea id="sqlInput" placeholder="Enter SQL here...&#10;Examples:&#10;SELECT * FROM users&#10;INSERT INTO users VALUES(1, 'Alice', 20, 'Admin', 'Active')"></textarea>
+                <div id="sqlHighlight" class="sql-highlight"></div>
+            </div>
+            <div class="actions">
+                <button id="runBtn" onclick="runSql()">Run Query</button>
+            </div>
+        </div>
 
-  <script>
-    const state = {
-      databases: [],
-      currentDb: 'MyDB'
-    };
+        <div class="result-box" id="resultContainer">
+            <div style="color:var(--muted); text-align:center; padding-top:40px;">Results will appear here</div>
+        </div>
+    </main>
 
-    // Helper for API calls
-    async function api(path, payload = null, method = 'POST') {
-      const opts = { 
-          method, 
-          headers: { 
-              'Content-Type': 'application/json',
-                'Authorization': sessionStorage.getItem('db_token') || ''
-          } 
-      };
-      if (payload && method !== 'GET') opts.body = JSON.stringify(payload);
-      const res = await fetch(path, opts);
-      if (res.status === 401) { window.location.href = '/login.html'; return; }
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Request failed');
-      return data;
-    }
+    <script>
+        const state = {
+            databases: [],
+            currentDb: 'MyDB'
+        };
 
-    async function runSql() {
-      const sql = document.getElementById('sqlInput').value.trim();
-      if (!sql) return;
+        // SQL 关键字列表
+        const SQL_KEYWORDS = [
+            'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE',
+            'CREATE', 'DROP', 'ALTER', 'DATABASE', 'TABLE', 'INDEX', 'VIEW', 'TRIGGER',
+            'USE', 'SHOW', 'DESCRIBE', 'EXPLAIN', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER',
+            'ON', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL',
+            'DISTINCT', 'AS', 'AND', 'OR', 'NOT', 'IN', 'BETWEEN', 'LIKE', 'IS', 'NULL',
+            'TRUE', 'FALSE', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'CASE', 'WHEN', 'THEN',
+            'END', 'ELSE', 'BEGIN', 'COMMIT', 'ROLLBACK', 'SAVEPOINT', 'GRANT', 'REVOKE',
+            'PRIMARY', 'FOREIGN', 'KEY', 'REFERENCES', 'CONSTRAINT', 'DEFAULT', 'CHECK',
+            'UNIQUE', 'AUTO_INCREMENT', 'INTEGER', 'VARCHAR', 'TEXT', 'DATE', 'DATETIME',
+            'TIMESTAMP', 'BOOLEAN', 'DECIMAL', 'FLOAT', 'DOUBLE', 'ADD', 'COLUMN',
+            'CONSTRAINT', 'FOREIGN', 'PRIMARY', 'REFERENCES', 'UNIQUE', 'CHECK', 'DEFAULT',
+            'NOT', 'NULL', 'INT', 'CHAR', 'BINARY', 'VARBINARY', 'TINYBLOB', 'BLOB',
+            'MEDIUMBLOB', 'LONGBLOB', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT', 'ENUM', 'SET',
+            'DEC', 'NUMERIC', 'FIXED', 'YEAR', 'TIME', 'CURRENT_TIMESTAMP'
+        ];
 
-      const btn = document.getElementById('runBtn');
-      const container = document.getElementById('resultContainer');
-      
-      btn.disabled = true;
-      btn.textContent = 'Running...';
-      container.innerHTML = '<div style="color:var(--muted);text-align:center;">Executing...</div>';
+        // SQL 操作符
+        const SQL_OPERATORS = ['=', '>', '<', '>=', '<=', '<>', '!=', 'LIKE', 'IN', 'BETWEEN', 'IS'];
 
-      try {
-        const data = await api('/api/sql', { sql });
-
-        if (data.rows) {
-          // It was a SELECT
-          if (data.rows.length === 0) {
-              container.innerHTML = `<div class="msg success">Query executed successfully. 0 rows returned.</div>`;
-          } else {
-              renderTable(data.rows, container);
-          }
-        } else {
-          // It was a non-SELECT command
-          container.innerHTML = `<div class="msg success">Query executed successfully.</div>`;
-          if (data.message) {
-              container.innerHTML += `<div class="msg">${esc(data.message)}</div>`;
-          }
-
-          if (data.db && data.db !== state.currentDb) {
-             state.currentDb = data.db;
-             await loadDatabases();
-             await loadTables(true);
-          }
-
-          // Check for CREATE/DROP DATABASE to refresh list
-          if (/\b(create|drop)\s+database\s+/i.test(sql)) {
-              await loadDatabases();
-          }
-          
-          // Check for Table DDL to refresh table list
-          if (/\b(create|drop|alter|rename)\s+table\s+/i.test(sql)) {
-              await loadTables();
-          }
-        }
-      } catch (e) {
-        container.innerHTML = `<div class="msg error">Request failed: ${esc(e.message)}</div>`;
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Run Query';
-      }
-    }
-
-    function renderTable(rows, container, fields) {
-      if (!Array.isArray(rows)) return;
-      
-      let cols = [];
-      let colTypes = {};
-
-      if (fields && Array.isArray(fields) && fields.length > 0) {
-          cols = fields.map(f => f.name);
-          fields.forEach(f => colTypes[f.name] = f.type);
-      } else if (rows.length > 0) {
-          cols = Object.keys(rows[0]);
-      } else {
-          container.innerHTML = '<div class="msg success">Empty result set.</div>';
-          return;
-      }
-
-      let html = '<table><thead><tr>';
-      cols.forEach(c => {
-          let headerText = esc(c);
-          if (colTypes[c]) {
-              headerText += ` <span style="font-weight:normal; font-size:0.8em; color:var(--muted)">(${esc(colTypes[c])})</span>`;
-          }
-          html += `<th>${headerText}</th>`;
-      });
-      html += '</tr></thead><tbody>';
-      
-      if (rows.length === 0) {
-           html += `<tr><td colspan="${cols.length}" style="text-align:center; color:var(--muted); padding:20px;">No data (Table is empty)</td></tr>`;
-      } else {
-          rows.forEach(r => {
-            html += '<tr>';
-            cols.forEach(c => html += `<td>${esc(r[c])}</td>`);
-            html += '</tr>';
-          });
-      }
-      html += '</tbody></table>';
-      container.innerHTML = html;
-    }
-
-    function esc(s) {
-      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    }
-    
-    // Support Ctrl+Enter to run
-    document.getElementById('sqlInput').addEventListener('keydown', function(e) {
-      if (e.ctrlKey && e.key === 'Enter') {
-        runSql();
-      }
-    });
-
-    // --- DB Management ---
-
-    async function loadDatabases() {
-      try {
-        const data = await api('/api/databases', null, 'GET');
-        state.databases = data.databases || [];
-        
-        const sel = document.getElementById('dbSel');
-        sel.innerHTML = '';
-        
-        let foundCurrent = false;
-        state.databases.forEach(db => {
-          const opt = document.createElement('option');
-          opt.value = db;
-          opt.textContent = db;
-          sel.appendChild(opt);
-          if (db === state.currentDb) foundCurrent = true;
-        });
-        
-        if (foundCurrent) {
-            sel.value = state.currentDb;
-            // Ensure backend is synced even if we think it matches
-            await api('/api/use_database', { database: state.currentDb });
-        } else if (state.databases.length > 0) {
-            // If currentDb is not found, maybe switch to first available?
-            // Or keep it invalid? Let's switch.
-            sel.value = state.databases[0];
-            state.currentDb = state.databases[0];
-            // Tell backend to switch
-            await api('/api/use_database', { database: state.currentDb });
-        }
-      } catch (e) {
-        console.error('Failed to load databases', e);
-      }
-    }
-
-    async function createDatabase() {
-      let input = prompt('请输入创建数据库SQL语句：', 'create database mydb');
-      if (!input) return;
-      let name = input.replace(/create\s+database\s+/i, '').trim();
-      if (!name || !/^[a-zA-Z0-9_]+$/.test(name)) {
-        alert('数据库名称无效');
-        return;
-      }
-      try {
-        await api('/api/create_database', { database: name });
-        await loadDatabases();
-        
-        // Auto switch
-        const sel = document.getElementById('dbSel');
-        sel.value = name;
-        await onDatabaseChange();
-      } catch (e) {
-        alert('创建失败: ' + e.message);
-      }
-    }
-
-    async function loadTables(autoSelectFirst = false) {
-      try {
-        const data = await api('/api/schemas', null, 'GET');
-        const schemas = data.schemas || [];
-        const nav = document.getElementById('tableListNav');
-        nav.innerHTML = '';
-
-        if (schemas.length === 0) {
-             nav.innerHTML = '<li style="color:var(--muted); padding:10px; border:none; background:transparent; justify-content:center; cursor:default;">(No tables)</li>';
-             return;
-        }
-
-        schemas.forEach((s, index) => {
-          const li = document.createElement('li');
-          li.dataset.table = s.table; // For highlighting
-          // Add a small icon or just text
-          li.innerHTML = `<a href="javascript:void(0)" onclick="showTableContent('${esc(s.table)}')" style="display:block; width:100%; height:100%;"><span style="font-family:monospace;">${esc(s.table)}</span></a>`;
-          nav.appendChild(li);
-        });
-
-        if (autoSelectFirst && schemas.length > 0) {
-            showTableContent(schemas[0].table);
-        }
-
-      } catch (e) {
-        console.error('Failed to load tables', e);
-      }
-    }
-
-    async function showTableContent(tableName) {
-        // Highlight active table
-        const nav = document.getElementById('tableListNav');
-        const items = nav.querySelectorAll('li');
-        items.forEach(li => {
-            if (li.dataset.table === tableName) li.classList.add('active');
-            else li.classList.remove('active');
-        });
-
-        // reuse runSql logic but programmatically
-        const container = document.getElementById('resultContainer');
-        container.innerHTML = '<div style="color:var(--muted);text-align:center;">Loading ' + esc(tableName) + '...</div>';
-        
-        try {
-            // We use standard SQL query via API
-            const sql = `SELECT * FROM ${tableName}`;
-            const data = await api('/api/sql', { sql });
-            
-            if (data.rows) {
-                renderTable(data.rows, container, data.fields);
-            } else {
-                container.innerHTML = `<div class="msg error">Failed to load table content.</div>`;
+        // SQL 语法高亮处理器
+        class SQLHighlighter {
+            constructor(inputElement, highlightElement) {
+                this.input = inputElement;
+                this.highlight = highlightElement;
+                this.container = inputElement?.parentElement;
+                this.setupEventListeners();
+                this.updateHighlight();
             }
-        } catch (e) {
-            container.innerHTML = `<div class="msg error">Error: ${esc(e.message)}</div>`;
+
+            setupEventListeners() {
+                this.input.addEventListener('input', () => this.updateHighlight());
+                this.input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        this.handleTab(e.shiftKey);
+                    }
+                });
+                this.input.addEventListener('scroll', () => this.syncScroll());
+            }
+
+            syncScroll() {
+                const top = this.input.scrollTop;
+                const left = this.input.scrollLeft;
+                this.highlight.style.transform = `translate(${-left}px, ${-top}px)`;
+            }
+
+            handleTab(isShift) {
+                const start = this.input.selectionStart;
+                const end = this.input.selectionEnd;
+                const value = this.input.value;
+
+                if (isShift) {
+                    // Shift+Tab: 删除缩进
+                    const before = value.substring(0, start);
+                    const after = value.substring(end);
+                    const linesBefore = before.split('\n');
+                    const currentLine = linesBefore[linesBefore.length - 1];
+
+                    if (currentLine.startsWith('  ')) {
+                        const newBefore = before.substring(0, before.length - 2);
+                        this.input.value = newBefore + after;
+                        this.input.selectionStart = this.input.selectionEnd = start - 2;
+                    }
+                } else {
+                    // Tab: 插入2个空格
+                    this.input.value = value.substring(0, start) + '  ' + value.substring(end);
+                    this.input.selectionStart = this.input.selectionEnd = start + 2;
+                }
+
+                this.updateHighlight();
+                this.input.focus();
+            }
+
+            updateHighlight() {
+                // 保留当前滚动位置，刷新高亮后恢复，避免光标错位
+                const prevTop = this.input.scrollTop;
+                const prevLeft = this.input.scrollLeft;
+                const text = this.input.value;
+                const highlighted = this.highlightSQL(text);
+                this.highlight.innerHTML = highlighted;
+                this.input.scrollTop = prevTop;
+                this.input.scrollLeft = prevLeft;
+                this.syncScroll();
+            }
+
+            highlightSQL(sql) {
+                if (!sql) return '';
+
+                // 使用占位符收集高亮片段，避免在HTML标签内重复匹配
+                const markers = [];
+                let working = sql;
+                const applyPattern = (pattern, className) => {
+                    working = working.replace(pattern, (match) => {
+                        const id = markers.length;
+                        markers.push({ className, text: match });
+                        return `__SQLHL_${id}__`;
+                    });
+                };
+
+                // 按优先级应用规则，前面的规则会屏蔽后面的匹配
+                applyPattern(/\/\*[\s\S]*?\*\//g, 'comment'); // 多行注释
+                applyPattern(/--.*$/gm, 'comment'); // 单行注释
+                applyPattern(/^#.*$/gm, 'comment'); // 单行注释 (#)
+
+                applyPattern(/'[^']*'/g, 'string');
+                applyPattern(/"[^"]*"/g, 'string');
+                applyPattern(/`[^`]*`/g, 'string');
+
+                applyPattern(/\b\d+(\.\d+)?\b/g, 'number');
+                applyPattern(/\bIS\s+(NOT\s+)?NULL\b/gi, 'keyword');
+
+                SQL_KEYWORDS.forEach(keyword => {
+                    const regex = new RegExp(`\\b${this.escapeRegExp(keyword)}\\b`, 'gi');
+                    applyPattern(regex, 'keyword');
+                });
+
+                const operators = ['>=', '<=', '<>', '!=', '=', '>', '<', '\\+', '-', '\\*', '/', '%', '\\|\\|'];
+                operators.forEach(op => {
+                    const regex = new RegExp(op, 'g');
+                    applyPattern(regex, 'operator');
+                });
+
+                // 先整体转义，再替换占位符为带样式的内容
+                let result = this.escapeHTML(working);
+                result = result.replace(/__SQLHL_(\d+)__/g, (_, idx) => {
+                    const marker = markers[Number(idx)];
+                    return `<span class="${marker.className}">${this.escapeHTML(marker.text)}</span>`;
+                });
+
+                result = result.replace(/\n/g, '<br>');
+                if (sql.endsWith('\n')) {
+                    result += '<br>';
+                }
+                return result;
+            }
+
+            escapeHTML(text) {
+                // Escape only characters that can break HTML to avoid double-encoding quotes
+                return String(text)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+            }
+
+            escapeRegExp(string) {
+                return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            }
         }
-    }
 
-    async function onDatabaseChange() {
-      const dbName = document.getElementById('dbSel').value;
-      if (!dbName) return;
-      try {
-        await api('/api/use_database', { database: dbName });
-        state.currentDb = dbName;
-        await loadTables(true); // Auto show first table on DB switch
-      } catch (e) {
-        alert('切换失败: ' + e.message);
-      }
-    }
+        let sqlHighlighter;
 
-    // Init
-    function doLogout() {
-      sessionStorage.removeItem('db_token');
-      sessionStorage.removeItem('db_user');
-      localStorage.removeItem('db_token');
-      localStorage.removeItem('db_user');
-      window.location.href = '/login.html';
-    }
+        // Helper for API calls
+        async function api(path, payload = null, method = 'POST') {
+            const opts = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': sessionStorage.getItem('db_token') || ''
+                }
+            };
+            if (payload && method !== 'GET') opts.body = JSON.stringify(payload);
+            const res = await fetch(path, opts);
+            if (res.status === 401) { window.location.href = '/login.html'; return; }
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error || 'Request failed');
+            return data;
+        }
 
-    (async () => {
-        await loadDatabases();
-        await loadTables(true); // Auto show first table on init
-    })();
-  </script>
+        async function runSql() {
+            const sql = document.getElementById('sqlInput').value.trim();
+            if (!sql) return;
+
+            const btn = document.getElementById('runBtn');
+            const container = document.getElementById('resultContainer');
+
+            btn.disabled = true;
+            btn.textContent = 'Running...';
+            container.innerHTML = '<div style="color:var(--muted);text-align:center;">Executing...</div>';
+
+            try {
+                const data = await api('/api/sql', { sql });
+
+                if (data.rows) {
+                    // It was a SELECT
+                    if (data.rows.length === 0) {
+                        container.innerHTML = `<div class="msg success">Query executed successfully. 0 rows returned.</div>`;
+                    } else {
+                        renderTable(data.rows, container);
+                    }
+                } else {
+                    // It was a non-SELECT command
+                    container.innerHTML = `<div class="msg success">Query executed successfully.</div>`;
+                    if (data.message) {
+                        container.innerHTML += `<div class="msg">${esc(data.message)}</div>`;
+                    }
+
+                    // Check for USE command to update UI
+                    const match = sql.match(/^\s*use\s+([a-zA-Z0-9_]+)/i);
+                    if (match) {
+                        const newDb = match[1];
+                        // Verify if it exists in our list (optional, but good)
+                        // Or just update the selector
+                        const sel = document.getElementById('dbSel');
+                        sel.value = newDb;
+                        state.currentDb = newDb;
+                        await loadTables();
+                    }
+
+                    // Check for CREATE/DROP DATABASE to refresh list
+                    if (/^\s*(create|drop)\s+database\s+/i.test(sql)) {
+                        await loadDatabases();
+                    }
+
+                    // Check for Table DDL to refresh table list
+                    if (/^\s*(create|drop|alter|rename)\s+table\s+/i.test(sql)) {
+                        await loadTables();
+                    }
+                }
+            } catch (e) {
+                container.innerHTML = `<div class="msg error">Request failed: ${esc(e.message)}</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run Query';
+            }
+        }
+
+        function renderTable(rows, container, fields) {
+            if (!Array.isArray(rows)) return;
+
+            let cols = [];
+            let colTypes = {};
+
+            if (fields && Array.isArray(fields) && fields.length > 0) {
+                cols = fields.map(f => f.name);
+                fields.forEach(f => colTypes[f.name] = f.type);
+            } else if (rows.length > 0) {
+                cols = Object.keys(rows[0]);
+            } else {
+                container.innerHTML = '<div class="msg success">Empty result set.</div>';
+                return;
+            }
+
+            let html = '<table><thead><tr>';
+            cols.forEach(c => {
+                let headerText = esc(c);
+                if (colTypes[c]) {
+                    headerText += ` <span style="font-weight:normal; font-size:0.8em; color:var(--muted)">(${esc(colTypes[c])})</span>`;
+                }
+                html += `<th>${headerText}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+
+            if (rows.length === 0) {
+                html += `<tr><td colspan="${cols.length}" style="text-align:center; color:var(--muted); padding:20px;">No data (Table is empty)</td></tr>`;
+            } else {
+                rows.forEach(r => {
+                    html += '<tr>';
+                    cols.forEach(c => html += `<td>${esc(r[c])}</td>`);
+                    html += '</tr>';
+                });
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function esc(s) {
+            return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Support Ctrl+Enter to run
+        document.getElementById('sqlInput').addEventListener('keydown', function (e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                runSql();
+            }
+        });
+
+        // --- DB Management ---
+
+        async function loadDatabases() {
+            try {
+                const data = await api('/api/databases', null, 'GET');
+                state.databases = data.databases || [];
+
+                const sel = document.getElementById('dbSel');
+                sel.innerHTML = '';
+
+                let foundCurrent = false;
+                state.databases.forEach(db => {
+                    const opt = document.createElement('option');
+                    opt.value = db;
+                    opt.textContent = db;
+                    sel.appendChild(opt);
+                    if (db === state.currentDb) foundCurrent = true;
+                });
+
+                if (foundCurrent) {
+                    sel.value = state.currentDb;
+                    // Ensure backend is synced even if we think it matches
+                    await api('/api/use_database', { database: state.currentDb });
+                } else if (state.databases.length > 0) {
+                    // If currentDb is not found, maybe switch to first available?
+                    // Or keep it invalid? Let's switch.
+                    sel.value = state.databases[0];
+                    state.currentDb = state.databases[0];
+                    // Tell backend to switch
+                    await api('/api/use_database', { database: state.currentDb });
+                }
+            } catch (e) {
+                console.error('Failed to load databases', e);
+            }
+        }
+
+        async function createDatabase() {
+            let input = prompt('请输入创建数据库SQL语句：', 'create database mydb');
+            if (!input) return;
+            let name = input.replace(/create\s+database\s+/i, '').trim();
+            if (!name || !/^[a-zA-Z0-9_]+$/.test(name)) {
+                alert('数据库名称无效');
+                return;
+            }
+            try {
+                await api('/api/create_database', { database: name });
+                await loadDatabases();
+
+                // Auto switch
+                const sel = document.getElementById('dbSel');
+                sel.value = name;
+                await onDatabaseChange();
+            } catch (e) {
+                alert('创建失败: ' + e.message);
+            }
+        }
+
+        async function loadTables(autoSelectFirst = false) {
+            try {
+                const data = await api('/api/schemas', null, 'GET');
+                const schemas = data.schemas || [];
+                const nav = document.getElementById('tableListNav');
+                nav.innerHTML = '';
+
+                if (schemas.length === 0) {
+                    nav.innerHTML = '<li style="color:var(--muted); padding:10px; border:none; background:transparent; justify-content:center; cursor:default;">(No tables)</li>';
+                    return;
+                }
+
+                schemas.forEach((s, index) => {
+                    const li = document.createElement('li');
+                    li.dataset.table = s.table; // For highlighting
+                    // Add a small icon or just text
+                    li.innerHTML = `<a href="javascript:void(0)" onclick="showTableContent('${esc(s.table)}')" style="display:block; width:100%; height:100%;"><span style="font-family:monospace;">${esc(s.table)}</span></a>`;
+                    nav.appendChild(li);
+                });
+
+                if (autoSelectFirst && schemas.length > 0) {
+                    showTableContent(schemas[0].table);
+                }
+
+            } catch (e) {
+                console.error('Failed to load tables', e);
+            }
+        }
+
+        async function showTableContent(tableName) {
+            // Highlight active table
+            const nav = document.getElementById('tableListNav');
+            const items = nav.querySelectorAll('li');
+            items.forEach(li => {
+                if (li.dataset.table === tableName) li.classList.add('active');
+                else li.classList.remove('active');
+            });
+
+            // reuse runSql logic but programmatically
+            const container = document.getElementById('resultContainer');
+            container.innerHTML = '<div style="color:var(--muted);text-align:center;">Loading ' + esc(tableName) + '...</div>';
+
+            try {
+                // We use standard SQL query via API
+                const sql = `SELECT * FROM ${tableName}`;
+                const data = await api('/api/sql', { sql });
+
+                if (data.rows) {
+                    renderTable(data.rows, container, data.fields);
+                } else {
+                    container.innerHTML = `<div class="msg error">Failed to load table content.</div>`;
+                }
+            } catch (e) {
+                container.innerHTML = `<div class="msg error">Error: ${esc(e.message)}</div>`;
+            }
+        }
+
+        async function onDatabaseChange() {
+            const dbName = document.getElementById('dbSel').value;
+            if (!dbName) return;
+            try {
+                await api('/api/use_database', { database: dbName });
+                state.currentDb = dbName;
+                await loadTables(true); // Auto show first table on DB switch
+            } catch (e) {
+                alert('切换失败: ' + e.message);
+            }
+        }
+
+        // Init
+        function doLogout() {
+            sessionStorage.removeItem('db_token');
+            sessionStorage.removeItem('db_user');
+            localStorage.removeItem('db_token');
+            localStorage.removeItem('db_user');
+            window.location.href = '/login.html';
+        }
+
+        (async () => {
+            // 初始化SQL语法高亮
+            const sqlInput = document.getElementById('sqlInput');
+            const sqlHighlight = document.getElementById('sqlHighlight');
+
+            // 确保元素存在
+            if (sqlInput && sqlHighlight) {
+                sqlHighlighter = new SQLHighlighter(sqlInput, sqlHighlight);
+            } else {
+                console.error('SQL编辑器元素未找到');
+            }
+
+            // 初始化页面
+            await loadDatabases();
+            await loadTables(true);
+        })();
+    </script>
 </body>
 </html>

@@ -18,7 +18,10 @@ enum class CommandType {
   kCreateIndex,
   kDropIndex,
   kShowIndexes,
+  kShowTables,
   kAlter,
+  kCreateView,
+  kDropView,
   kBegin,
   kCommit,
   kRollback,
@@ -66,11 +69,22 @@ struct ParsedCommand {
   std::string fieldName;              // for INDEX ops, DROP COLUMN
   bool isUnique = false;              // for CREATE INDEX
   std::string savepointName;          // for SAVEPOINT
+  ReferentialAction action = ReferentialAction::kRestrict;
+  bool actionSpecified = false;
+  ForeignKeyDef fkDef;
 
   // Alter Table specific
   AlterOperation alterOp = AlterOperation::kNone;
   Field columnDef;                    // For ADD/MODIFY COLUMN
   std::string extraInfo;              // For AFTER column name, etc.
+
+  // View definition
+  std::string viewName;
+  QueryPlan viewQuery;
+  std::vector<std::string> viewColumns;
+  std::string viewSql;
+  bool viewOrReplace = false;
+  bool ifExists = false;
 };
 
 class Parser {
