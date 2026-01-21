@@ -33,7 +33,8 @@ enum class CommandType {
   kGrant,
   kRevoke,
   kCheckpoint,
-  kBackup
+  kBackup,
+  kRestore
 };
 
 enum class AlterOperation {

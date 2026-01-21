@@ -63,8 +63,9 @@ class StorageEngine {
   bool LoadIndex(const std::string& indexPath, std::map<std::string, long>& outIndex, std::string& err);
   bool SaveIndex(const std::string& indexPath, const std::map<std::string, long>& index, std::string& err);
 
-  // Backup
-  bool BackupDatabase(const std::string& dbName, const std::string& destPath, std::string& err);
+  // Backup/Restore
+  bool BackupDatabase(const std::string& dbName, const std::string& backupName, uint64_t checkpointLsn, std::string& err);
+  bool RestoreDatabase(const std::string& dbName, const std::string& backupName, std::string& err);
 
  private:
   // basic read/write helpers

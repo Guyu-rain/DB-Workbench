@@ -613,6 +613,26 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
       return cmd;
   }
 
+  // RESTORE DATABASE dbName FROM 'backup'
+  if (upper.find("RESTORE DATABASE") == 0) {
+      cmd.type = CommandType::kRestore;
+      std::string rest = Trim(sql.substr(strlen("RESTORE DATABASE")));
+
+      auto fromPos = ToUpper(rest).find(" FROM ");
+      if (fromPos == std::string::npos) {
+          err = "Syntax error: expected FROM";
+          return cmd;
+      }
+
+      cmd.dbName = Trim(rest.substr(0, fromPos));
+      cmd.backupPath = Trim(TrimQuotes(Trim(rest.substr(fromPos + 6))));
+
+      if (cmd.dbName.empty() || cmd.backupPath.empty()) {
+          err = "Database name and backup required";
+      }
+      return cmd;
+  }
+
     // TCL: BEGIN / START TRANSACTION
     if (upper == "BEGIN" || upper == "BEGIN TRANSACTION" || upper == "START TRANSACTION") {
         cmd.type = CommandType::kBegin;

@@ -24,3 +24,12 @@ class LogManager {
   LSN next_lsn_ = 1;
   std::map<LSN, LogRecord> cache_;
 };
+
+struct CheckpointMeta {
+  uint32_t version = 1;
+  uint64_t checkpoint_lsn = 0;
+  uint64_t timestamp_sec = 0;
+};
+
+bool EncodeCheckpointMeta(LogRecord& rec, const CheckpointMeta& meta);
+bool DecodeCheckpointMeta(const LogRecord& rec, CheckpointMeta& meta);

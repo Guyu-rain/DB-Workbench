@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <cstring>
 
 #include "../path_utils.h"
 #if defined(_WIN32)
@@ -41,6 +42,30 @@ bool ReadString(FILE* f, std::string& s) {
   if (!ReadUInt32(f, len)) return false;
   s.assign(len, '\0');
   return len == 0 || std::fread(&s[0], 1, len, f) == len;
+}
+
+void AppendU32(std::vector<uint8_t>& out, uint32_t v) {
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(&v);
+  out.insert(out.end(), p, p + sizeof(uint32_t));
+}
+
+void AppendU64(std::vector<uint8_t>& out, uint64_t v) {
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(&v);
+  out.insert(out.end(), p, p + sizeof(uint64_t));
+}
+
+bool ReadU32(const std::vector<uint8_t>& in, size_t& off, uint32_t& v) {
+  if (off + sizeof(uint32_t) > in.size()) return false;
+  std::memcpy(&v, in.data() + off, sizeof(uint32_t));
+  off += sizeof(uint32_t);
+  return true;
+}
+
+bool ReadU64(const std::vector<uint8_t>& in, size_t& off, uint64_t& v) {
+  if (off + sizeof(uint64_t) > in.size()) return false;
+  std::memcpy(&v, in.data() + off, sizeof(uint64_t));
+  off += sizeof(uint64_t);
+  return true;
 }
 
 } // namespace
@@ -211,4 +236,25 @@ bool LogManager::ReadAll(std::vector<LogRecord>& out, std::string& err) const {
 
   std::fclose(f);
   return err.empty();
+}
+
+bool EncodeCheckpointMeta(LogRecord& rec, const CheckpointMeta& meta) {
+  rec.after.clear();
+  rec.after.reserve(4 + sizeof(uint32_t) + sizeof(uint64_t) * 2);
+  const char magic[4] = {'C','K','P','T'};
+  rec.after.insert(rec.after.end(), magic, magic + 4);
+  AppendU32(rec.after, meta.version);
+  AppendU64(rec.after, meta.checkpoint_lsn);
+  AppendU64(rec.after, meta.timestamp_sec);
+  return true;
+}
+
+bool DecodeCheckpointMeta(const LogRecord& rec, CheckpointMeta& meta) {
+  if (rec.after.size() < 4 + sizeof(uint32_t) + sizeof(uint64_t) * 2) return false;
+  if (!(rec.after[0] == 'C' && rec.after[1] == 'K' && rec.after[2] == 'P' && rec.after[3] == 'T')) return false;
+  size_t off = 4;
+  if (!ReadU32(rec.after, off, meta.version)) return false;
+  if (!ReadU64(rec.after, off, meta.checkpoint_lsn)) return false;
+  if (!ReadU64(rec.after, off, meta.timestamp_sec)) return false;
+  return true;
 }

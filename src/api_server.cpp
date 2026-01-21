@@ -11,7 +11,9 @@
 #include <set>
 #include <filesystem>
 #include <cstdlib>
+#include <chrono>
 #include "path_utils.h"
+#include "txn/recovery.h"
 
 #if defined(_WIN32)
   #ifndef NOMINMAX
@@ -694,6 +696,10 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
             LogRecord rec;
             rec.txn_id = 0;
             rec.type = LogType::CHECKPOINT;
+            CheckpointMeta meta;
+            meta.checkpoint_lsn = log_.NextLsn();
+            meta.timestamp_sec = static_cast<uint64_t>(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+            EncodeCheckpointMeta(rec, meta);
             LSN lsn = log_.Append(rec, err);
             if (lsn == 0) { resp.status=500; resp.body=Error(err); return; }
             if (!log_.Flush(lsn, err)) { resp.status=500; resp.body=Error(err); return; }
@@ -727,13 +733,62 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
                 resp.body = Error("Permission denied: Only admin can backup database");
                 return;
             }
-            if (!engine_.BackupDatabase(cmd.dbName, cmd.backupPath, err)) {
+            if (session.current_txn) { resp.status=400; resp.body=Error("BACKUP not allowed in active transaction"); return; }
+            if (!fs::exists(dbms_paths::DbDirPath(cmd.dbName))) { resp.status=400; resp.body=Error("Database not found"); return; }
+
+            std::string prevDb = currentDbName_;
+            auto restoreLogDb = [&]() { log_.SetDbName(prevDb); };
+            log_.SetDbName(cmd.dbName);
+            LogRecord rec;
+            rec.txn_id = 0;
+            rec.type = LogType::CHECKPOINT;
+            CheckpointMeta meta;
+            meta.checkpoint_lsn = log_.NextLsn();
+            meta.timestamp_sec = static_cast<uint64_t>(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+            EncodeCheckpointMeta(rec, meta);
+            LSN lsn = log_.Append(rec, err);
+            if (lsn == 0) { restoreLogDb(); resp.status=500; resp.body=Error(err); return; }
+            if (!log_.Flush(lsn, err)) { restoreLogDb(); resp.status=500; resp.body=Error(err); return; }
+            if (!log_.TruncateWithBackup(err)) { restoreLogDb(); resp.status=500; resp.body=Error(err); return; }
+
+            if (!engine_.BackupDatabase(cmd.dbName, cmd.backupPath, meta.checkpoint_lsn, err)) {
+                restoreLogDb();
                 resp.status = 500;
                 resp.body = Error("Backup failed: " + err);
                 return;
             }
+            restoreLogDb();
             lastStatus = 200;
             lastResultBody = "{\"ok\":true,\"message\":\"Database " + JsonEscape(cmd.dbName) + " backed up to " + JsonEscape(cmd.backupPath) + "\"}";
+            continue;
+        }
+
+        if (cmd.type == CommandType::kRestore) {
+            if (user != "admin") {
+                resp.status = 403;
+                resp.body = Error("Permission denied: Only admin can restore database");
+                return;
+            }
+            if (session.current_txn) { resp.status=400; resp.body=Error("RESTORE not allowed in active transaction"); return; }
+            if (!engine_.RestoreDatabase(cmd.dbName, cmd.backupPath, err)) {
+                resp.status = 500;
+                resp.body = Error("Restore failed: " + err);
+                return;
+            }
+            std::string recErr;
+            Recovery::Run(engine_, cmd.dbName, recErr, nullptr);
+            if (!recErr.empty()) {
+                resp.status = 500;
+                resp.body = Error("Restore recovery failed: " + recErr);
+                return;
+            }
+            if (currentDbName_ == cmd.dbName) {
+                currentDbf_ = dbms_paths::DbfPath(cmd.dbName);
+                currentDat_ = dbms_paths::DatPath(cmd.dbName);
+                log_.SetDbName(cmd.dbName);
+            }
+            lastStatus = 200;
+            lastResultBody = "{\"ok\":true,\"message\":\"Database " + JsonEscape(cmd.dbName) + " restored from " + JsonEscape(cmd.backupPath) + "\"}";
             continue;
         }
         
@@ -793,6 +848,7 @@ void ApiServer::HandleExecuteSql(const HttpRequest& req, HttpResponse& resp) {
             case CommandType::kCheckpoint: accessNeeded="CREATE"; break;
             case CommandType::kCreateIndex: accessNeeded="INDEX"; break;
             case CommandType::kDropIndex: accessNeeded="INDEX"; break;
+            case CommandType::kRestore: accessNeeded="CREATE"; break;
             // ...
             default: break; 
         }
