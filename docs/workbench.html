@@ -187,477 +187,1098 @@
       .nav li { width: 100%; }
       .pill input { width: 140px; }
     }
+
+    /* 添加弹窗样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  width: 500px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+
+.modal-step {
+  display: none;
+}
+
+.modal-step.active {
+  display: block;
+}
+
+.modal-header {
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-footer {
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+}
+
+.form-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.form-row input {
+  flex: 1;
+}
+
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 5px 0;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: auto;
+}
+      /* Insert Row 弹窗样式 */
+      .insert-modal .modal-content {
+          width: 600px;
+          max-width: 95vw;
+      }
+
+      .insert-form {
+          max-height: 60vh;
+          overflow-y: auto;
+      }
+
+      .form-row-insert {
+          display: grid;
+          grid-template-columns: 1fr 2fr;
+          gap: 15px;
+          align-items: center;
+          margin-bottom: 15px;
+          padding: 12px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--panel);
+      }
+
+          .form-row-insert label {
+              color: var(--text);
+              font-weight: 500;
+              font-size: 14px;
+          }
+
+          .form-row-insert input, .form-row-insert select {
+              padding: 8px 12px;
+              border: 1px solid var(--border);
+              border-radius: 6px;
+              background: var(--panel-strong);
+              color: var(--text);
+              font-family: inherit;
+          }
+
+              .form-row-insert input:focus, .form-row-insert select:focus {
+                  outline: none;
+                  border-color: var(--accent);
+              }
+
+      .field-info {
+          font-size: 12px;
+          color: var(--muted);
+          margin-top: 4px;
+      }
+
+      .required-star {
+          color: var(--danger);
+      }
+
+      .insert-preview {
+          margin-top: 20px;
+          padding: 15px;
+          background: var(--panel);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          max-height: 200px;
+          overflow-y: auto;
+      }
+
+      .preview-title {
+          font-size: 14px;
+          color: var(--muted);
+          margin-bottom: 10px;
+          font-weight: 600;
+      }
+
+      .preview-sql {
+          font-family: 'Inconsolata', monospace;
+          font-size: 13px;
+          color: var(--accent);
+          line-height: 1.4;
+      }
   </style>
 </head>
 <body>
-  <aside>
-    <div class="logo"><span>DB</span> Workbench</div>
-    
-    <ul class="nav" style="margin-bottom:10px;">
-        <li class="active" onclick="location.href='/'"><a href="/" style="text-decoration:none; color:inherit; display:block;">Dashboard</a></li>
-        <li onclick="location.href='/sql'"><a href="/sql" style="text-decoration:none; color:inherit; display:block;">SQL Console</a></li>
-    </ul>
+    <aside>
+        <div class="logo"><span>DB</span> Workbench</div>
 
-    <!-- ****** 新增：数据库管理区域 ****** -->
-    <div class="nav-section">数据库</div>
-    <ul class="nav" style="margin-bottom: 12px;">
-      <li style="flex-direction: column; align-items: stretch; gap: 8px;">
-        <select id="dbSel" onchange="onDatabaseChange()" 
-                style="width:100%; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;">
-          <!-- 动态加载数据库列表 -->
-        </select>
-        <button onclick="createDatabase()" class="primary"
-                style="width:100%; background:var(--accent); color:#0a0d12; border:none; border-radius:8px; padding:8px; cursor:pointer; font-weight:600;">
-          + 创建数据库
-        </button>
-      </li>
-    </ul>
+        <ul class="nav" style="margin-bottom:10px;">
+            <li class="active" onclick="location.href='/'"><a href="/" style="text-decoration:none; color:inherit; display:block;">Dashboard</a></li>
+            <li onclick="location.href='/sql'"><a href="/sql" style="text-decoration:none; color:inherit; display:block;">SQL Console</a></li>
+        </ul>
 
-    <!-- <div class="nav-section">数据表</div> -->
-    <ul class="nav" id="tableListNav">
-      <!-- 表列表将动态加载 -->
-    </ul>
-  </aside>
+        <!-- ****** 新增：数据库管理区域 ****** -->
+        <div class="nav-section">数据库</div>
+        <ul class="nav" style="margin-bottom: 12px;">
+            <li style="flex-direction: column; align-items: stretch; gap: 8px;">
+                <select id="dbSel" onchange="onDatabaseChange()"
+                        style="width:100%; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px;">
+                    <!-- 动态加载数据库列表 -->
+                </select>
+                <button onclick="createDatabase()" class="primary"
+                        style="width:100%; background:var(--accent); color:#0a0d12; border:none; border-radius:8px; padding:8px; cursor:pointer; font-weight:600;">
+                    + 创建数据库
+                </button>
+            </li>
+        </ul>
 
-  <header>
-    <div class="title">Local MySQL • <span id="currentDbTitle">MyDB</span></div>
-    <div class="actions">
-      <button onclick="createTable()">+ Add Table</button>
-      <button onclick="addRow()">+ Insert Row</button>
-      <button class="primary" id="runBtn" onclick="runQuery()">▶ Run</button>
-      <button onclick="doLogout()" style="background:transparent; border:1px solid var(--danger); color:var(--danger); margin-left:12px;">Logout</button>
+        <!-- <div class="nav-section">数据表</div> -->
+        <ul class="nav" id="tableListNav">
+            <!-- 表列表将动态加载 -->
+        </ul>
+    </aside>
+
+    <header>
+        <div class="title">Local MySQL • <span id="currentDbTitle">MyDB</span></div>
+        <div class="actions">
+            <button onclick="showCreateTableModal()">+ Add Table</button>
+            <button onclick="showInsertRowModal()">+ Insert Row</button>
+            <button class="primary" id="runBtn" onclick="runQuery()">▶ Run</button>
+            <button onclick="doLogout()" style="background:transparent; border:1px solid var(--danger); color:var(--danger); margin-left:12px;">Logout</button>
+        </div>
+    </header>
+
+    <main>
+        <section class="surface">
+            <div class="toolbar">
+                <!-- ****** 修改：Schema 下拉框改为只读，显示当前数据库 ****** -->
+                <div class="pill">Schema <select id="schemaSel" disabled><option>MyDB</option></select></div>
+                <div class="pill">Table <select id="tableSel" onchange="onTableChange()"></select></div>
+
+                <div class="pill">
+                    Filter
+                    <select id="filterFieldSel"></select>
+                    <select id="filterOpSel">
+                        <option value="=">=</option>
+                        <option value="!=">!=</option>
+                        <option value=">">&gt;</option>
+                        <option value=">=">&gt;=</option>
+                        <option value="<">&lt;</option>
+                        <option value="<=">&lt;=</option>
+                        <option value="CONTAINS">CONTAINS</option>
+                    </select>
+                    <input id="filterValInput" placeholder="value">
+                </div>
+
+            </div>
+
+            <div id="banner" style="margin-top:10px; display:none; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background: rgba(61, 213, 152, 0.08); color: var(--text); font-weight:600;"></div>
+
+            <table class="grid" id="dataGrid">
+                <thead><tr><th>ID</th><th>Name</th><th>Age</th><th>Role</th><th>Status</th><th style="width:120px; text-align:right;">Actions</th></tr></thead>
+                <tbody></tbody>
+            </table>
+
+        </section>
+    </main>
+
+    <!-- 创建表弹窗 -->
+    <div id="createTableModal" class="modal-overlay">
+        <div class="modal-content">
+            <!-- 第一步：表基本信息 -->
+            <div id="step1" class="modal-step active">
+                <div class="modal-header">
+                    <h3>创建新表 - 步骤 1/2</h3>
+                </div>
+
+                <div class="form-group">
+                    <label for="tableName">表名</label>
+                    <input type="text" id="tableName" placeholder="例如: users, products">
+                </div>
+
+                <div class="form-group">
+                    <label for="columnCount">列数</label>
+                    <input type="number" id="columnCount" min="1" max="20" value="3">
+                </div>
+
+                <div class="modal-footer">
+                    <button onclick="hideCreateTableModal()" style="background: var(--panel); color: var(--text); border: 1px solid var(--border); padding: 10px 20px; border-radius: 8px; cursor: pointer;">取消</button>
+                    <button onclick="showStep2()" style="background: var(--accent); color: #0a0d12; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">下一步</button>
+                </div>
+            </div>
+
+            <!-- 第二步：列定义 -->
+            <div id="step2" class="modal-step">
+                <div class="modal-header">
+                    <h3>创建新表 - 步骤 2/2</h3>
+                    <p id="tableNameDisplay" style="color: var(--muted); margin: 5px 0 0 0;"></p>
+                </div>
+
+                <div id="columnsContainer">
+                    <!-- 列定义将动态生成在这里 -->
+                </div>
+
+                <div class="modal-footer">
+                    <button onclick="showStep1()" style="background: var(--panel); color: var(--text); border: 1px solid var(--border); padding: 10px 20px; border-radius: 8px; cursor: pointer;">上一步</button>
+                    <button onclick="createTableFromForm()" style="background: var(--accent); color: #0a0d12; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">创建表</button>
+                </div>
+            </div>
+        </div>
     </div>
-  </header>
+    <!-- Insert Row 弹窗 -->
+    <div id="insertRowModal" class="modal-overlay insert-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>插入新记录</h3>
+                <p id="insertTableName" style="color: var(--muted); margin: 5px 0 0 0;"></p>
+            </div>
 
-  <main>
-    <section class="surface">
-      <div class="toolbar">
-        <!-- ****** 修改：Schema 下拉框改为只读，显示当前数据库 ****** -->
-        <div class="pill">Schema <select id="schemaSel" disabled><option>MyDB</option></select></div>
-        <div class="pill">Table <select id="tableSel" onchange="onTableChange()"></select></div>
+            <div class="insert-form">
+                <div id="insertFieldsContainer">
+                    <!-- 字段输入将动态生成在这里 -->
+                </div>
 
-        <div class="pill">
-            Filter
-            <select id="filterFieldSel"></select>
-            <select id="filterOpSel">
-              <option value="=">=</option>
-              <option value="!=">!=</option>
-              <option value=">">&gt;</option>
-              <option value=">=">&gt;=</option>
-              <option value="<">&lt;</option>
-              <option value="<=">&lt;=</option>
-              <option value="CONTAINS">CONTAINS</option>
-            </select>
-            <input id="filterValInput" placeholder="value">
-          </div>
+                <div class="insert-preview">
+                    <div class="preview-title">SQL 预览</div>
+                    <div id="sqlPreview" class="preview-sql"></div>
+                </div>
+            </div>
 
-      </div>
-
-      <div id="banner" style="margin-top:10px; display:none; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background: rgba(61, 213, 152, 0.08); color: var(--text); font-weight:600;"></div>
-
-      <table class="grid" id="dataGrid">
-        <thead><tr><th>ID</th><th>Name</th><th>Age</th><th>Role</th><th>Status</th><th style="width:120px; text-align:right;">Actions</th></tr></thead>
-        <tbody></tbody>
-      </table>
-
-    </section>
-  </main>
-
-  <script>
-    // ****** 修改：全局状态添加数据库信息 ******
-    const state = {
-      rows: [],
-      loading: false,
-      schemas: {},
-      currentSchema: null,
-      databases: [],      // 数据库列表
-      currentDb: 'MyDB'   // 当前选中的数据库
-    };
-
-    // Auth Check
-    if (!sessionStorage.getItem('db_token')) {
-        window.location.href = '/login.html';
-    }
-
-    function setBanner(msg, color = 'var(--text)') {
-      const el = document.getElementById('banner');
-      if (!msg) { el.style.display = 'none'; return; }
-      el.style.display = 'block';
-      el.style.color = color;
-      el.textContent = msg;
-    }
-
-    function setLoading(flag) {
-      state.loading = flag;
-      document.getElementById('runBtn').textContent = flag ? '… Running' : '▶ Run';
-      document.getElementById('runBtn').disabled = flag;
-    }
-
-    async function api(path, payload = null, method = 'POST') {
-      setLoading(true);
-      setBanner('');
-      try {
-        const opts = { 
-            method, 
-            headers: { 
-                'Content-Type': 'application/json',
-                  'Authorization': sessionStorage.getItem('db_token') || ''
-            } 
+            <div class="modal-footer">
+                <button onclick="hideInsertRowModal()" style="background: var(--panel); color: var(--text); border: 1px solid var(--border); padding: 10px 20px; border-radius: 8px; cursor: pointer; flex: 1;">取消</button>
+                <button onclick="insertRowFromForm()" style="background: var(--accent); color: #0a0d12; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; flex: 2; margin-left: 10px;">插入记录</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // ****** 修改：全局状态添加数据库信息 ******
+        const state = {
+            rows: [],
+            loading: false,
+            schemas: {},
+            currentSchema: null,
+            databases: [],      // 数据库列表
+            currentDb: 'MyDB'   // 当前选中的数据库
         };
-        if (payload && method !== 'GET') opts.body = JSON.stringify(payload);
-        const res = await fetch(path, opts);
-        if (res.status === 401) { window.location.href = '/login.html'; return; }
 
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error || '请求失败');
-        return data;
-      } catch (e) {
-        setBanner(e.message || '请求失败', 'var(--danger)');
-        throw e;
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    function esc(s) {
-      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    }
-
-    // ****** 新增：加载数据库列表 ******
-    async function loadDatabases() {
-      try {
-        const data = await api('/api/databases', null, 'GET');
-        state.databases = data.databases || [];
-        
-        const sel = document.getElementById('dbSel');
-        const current = sel.value || state.currentDb;
-        sel.innerHTML = '';
-        
-        state.databases.forEach(db => {
-          const opt = document.createElement('option');
-          opt.value = db;
-          opt.textContent = db;
-          sel.appendChild(opt);
-        });
-        
-        // 恢复选择或默认选中第一个
-        if (state.databases.includes(current)) {
-          sel.value = current;
-          await api('/api/use_database', { database: current });
-        } else if (state.databases.length > 0) {
-          sel.value = state.databases[0];
-          state.currentDb = state.databases[0];
-          await api('/api/use_database', { database: state.currentDb });
+        // Auth Check
+        if (!sessionStorage.getItem('db_token')) {
+            window.location.href = '/login.html';
         }
-      } catch (e) {
-        console.error('加载数据库失败:', e);
-      }
-    }
 
-    // ****** 新增：创建数据库 ******
-    async function createDatabase() {
-      let input = prompt('请输入创建数据库SQL语句：', 'create database mydb');
-      if (!input) return;
-
-      
-      let name = input.replace(/create\s+database\s+/i, '').trim();
-
-      // 2. 校验提取后的名称是否合法（只允许字母、数字、下划线）
-      if (!name || !/^[a-zA-Z0-9_]+$/.test(name)) {
-        setBanner('数据库名称无效（提取值：' + name + '）', 'var(--danger)');
-        return;
-      }
-      
-      try {
-        await api('/api/create_database', { database: name });
-        setBanner(`数据库 "${name}" 创建成功`);
-        await loadDatabases(); // 刷新列表
-        document.getElementById('dbSel').value = name;
-        await onDatabaseChange(); // 自动切换到新数据库
-      } catch (e) {
-        setBanner(e.message, 'var(--danger)');
-      }
-    }
-
-    // ****** 新增：切换数据库 ******
-    async function onDatabaseChange() {
-      const dbName = document.getElementById('dbSel').value;
-      if (!dbName) return;
-      
-      try {
-        // 新增：清空旧状态，防止脏数据
-        state.schemas = {};
-        state.currentSchema = null;
-        state.rows = [];
-        renderTable([]); // 立即清空表格
-
-        await api('/api/use_database', { database: dbName });
-        state.currentDb = dbName;
-        document.getElementById('currentDbTitle').textContent = dbName;
-        document.getElementById('schemaSel').innerHTML = `<option>${dbName}</option>`;
-        
-        await loadTables();
-        
-        // 新增：强制刷新表选择器和数据
-        const tableSel = document.getElementById('tableSel');
-        if (tableSel.options.length > 0) {
-          tableSel.value = tableSel.options[0].value;
-          await onTableChange(); // 立即触发查询
-        } else {
-          // 新增：无表时清空状态
-          setCurrentSchema(null);
-          renderTable([]);
+        function setBanner(msg, color = 'var(--text)') {
+            const el = document.getElementById('banner');
+            if (!msg) { el.style.display = 'none'; return; }
+            el.style.display = 'block';
+            el.style.color = color;
+            el.textContent = msg;
         }
-        
-        setBanner(`已切换到数据库: ${dbName}`);
-      } catch (e) {
-        setBanner(e.message, 'var(--danger)');
-      }
-    }
 
-    async function loadTables() {
-      try {
-        const data = await api('/api/schemas', null, 'GET');
-        const schemas = data.schemas || [];
+        function setLoading(flag) {
+            state.loading = flag;
+            document.getElementById('runBtn').textContent = flag ? '… Running' : '▶ Run';
+            document.getElementById('runBtn').disabled = flag;
+        }
 
-        
-        state.schemas = {};
-        schemas.forEach(s => state.schemas[String(s.table || '').toLowerCase()] = s);
+        async function api(path, payload = null, method = 'POST') {
+            setLoading(true);
+            setBanner('');
+            try {
+                const opts = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': sessionStorage.getItem('db_token') || ''
+                    }
+                };
+                if (payload && method !== 'GET') opts.body = JSON.stringify(payload);
+                const res = await fetch(path, opts);
+                if (res.status === 401) { window.location.href = '/login.html'; return; }
 
-        const sel = document.getElementById('tableSel');
-        const current = sel.value;
-        sel.innerHTML = '';
-        schemas.forEach(s => {
-          const name = s.table;
-          const opt = document.createElement('option');
-          opt.value = name;
-          opt.textContent = name;
-          sel.appendChild(opt);
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || '请求失败');
+                return data;
+            } catch (e) {
+                setBanner(e.message || '请求失败', 'var(--danger)');
+                throw e;
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function esc(s) {
+            return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // ****** 新增：加载数据库列表 ******
+        async function loadDatabases() {
+            try {
+                const data = await api('/api/databases', null, 'GET');
+                state.databases = data.databases || [];
+
+                const sel = document.getElementById('dbSel');
+                const current = sel.value || state.currentDb;
+                sel.innerHTML = '';
+
+                state.databases.forEach(db => {
+                    const opt = document.createElement('option');
+                    opt.value = db;
+                    opt.textContent = db;
+                    sel.appendChild(opt);
+                });
+
+                // 恢复选择或默认选中第一个
+                if (state.databases.includes(current)) {
+                    sel.value = current;
+                    await api('/api/use_database', { database: current });
+                } else if (state.databases.length > 0) {
+                    sel.value = state.databases[0];
+                    state.currentDb = state.databases[0];
+                    await api('/api/use_database', { database: state.currentDb });
+                }
+            } catch (e) {
+                console.error('加载数据库失败:', e);
+            }
+        }
+
+        // ****** 新增：创建数据库 ******
+        async function createDatabase() {
+            let input = prompt('请输入创建数据库SQL语句：', 'create database mydb');
+            if (!input) return;
+
+
+            let name = input.replace(/create\s+database\s+/i, '').trim();
+
+            // 2. 校验提取后的名称是否合法（只允许字母、数字、下划线）
+            if (!name || !/^[a-zA-Z0-9_]+$/.test(name)) {
+                setBanner('数据库名称无效（提取值：' + name + '）', 'var(--danger)');
+                return;
+            }
+
+            try {
+                await api('/api/create_database', { database: name });
+                setBanner(`数据库 "${name}" 创建成功`);
+                await loadDatabases(); // 刷新列表
+                document.getElementById('dbSel').value = name;
+                await onDatabaseChange(); // 自动切换到新数据库
+            } catch (e) {
+                setBanner(e.message, 'var(--danger)');
+            }
+        }
+
+        // ****** 新增：切换数据库 ******
+        async function onDatabaseChange() {
+            const dbName = document.getElementById('dbSel').value;
+            if (!dbName) return;
+
+            try {
+                // 新增：清空旧状态，防止脏数据
+                state.schemas = {};
+                state.currentSchema = null;
+                state.rows = [];
+                renderTable([]); // 立即清空表格
+
+                await api('/api/use_database', { database: dbName });
+                state.currentDb = dbName;
+                document.getElementById('currentDbTitle').textContent = dbName;
+                document.getElementById('schemaSel').innerHTML = `<option>${dbName}</option>`;
+
+                await loadTables();
+
+                // 新增：强制刷新表选择器和数据
+                const tableSel = document.getElementById('tableSel');
+                if (tableSel.options.length > 0) {
+                    tableSel.value = tableSel.options[0].value;
+                    await onTableChange(); // 立即触发查询
+                } else {
+                    // 新增：无表时清空状态
+                    setCurrentSchema(null);
+                    renderTable([]);
+                }
+
+                setBanner(`已切换到数据库: ${dbName}`);
+            } catch (e) {
+                setBanner(e.message, 'var(--danger)');
+            }
+        }
+
+        async function loadTables() {
+            try {
+                const data = await api('/api/schemas', null, 'GET');
+                const schemas = data.schemas || [];
+
+
+                state.schemas = {};
+                schemas.forEach(s => state.schemas[String(s.table || '').toLowerCase()] = s);
+
+                const sel = document.getElementById('tableSel');
+                const current = sel.value;
+                sel.innerHTML = '';
+                schemas.forEach(s => {
+                    const name = s.table;
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    sel.appendChild(opt);
+                });
+
+                if (current && schemas.some(s => s.table === current)) sel.value = current;
+                if (!sel.value && sel.options.length > 0) sel.value = sel.options[0].value;
+
+                setCurrentSchema(sel.value);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function setCurrentSchema(tableName) {
+            const key = String(tableName || '').toLowerCase();
+            state.currentSchema = state.schemas[key] || null;
+
+            // populate filter field select
+            const fieldSel = document.getElementById('filterFieldSel');
+            fieldSel.innerHTML = '';
+            if (state.currentSchema && Array.isArray(state.currentSchema.fields)) {
+                state.currentSchema.fields.forEach(f => {
+                    const opt = document.createElement('option');
+                    opt.value = f.name;
+                    opt.textContent = f.name;
+                    fieldSel.appendChild(opt);
+                });
+            }
+        }
+
+        function renderTable(rows) {
+            const schema = state.currentSchema;
+            const table = document.getElementById('dataGrid');
+
+            const thead = table.querySelector('thead');
+            const tbody = table.querySelector('tbody');
+
+            if (!schema || !Array.isArray(schema.fields)) {
+                thead.innerHTML = '<tr><th>Empty schema</th></tr>';
+                tbody.innerHTML = '';
+                return;
+            }
+
+            // header
+            thead.innerHTML = `<tr>
+            ${schema.fields.map(f => `<th>${esc(f.name)}</th>`).join('')}
+            <th style="width:120px; text-align:right;">Actions</th>
+          </tr>`;
+
+            // rows
+            tbody.innerHTML = rows.map((r, idx) => {
+                const cells = schema.fields.map(f => {
+                    const key = String(f.name || '').toLowerCase();
+                    return `<td>${esc(r[key])}</td>`;
+                }).join('');
+
+                // pick id for edit/delete: assume first key field; fallback first column
+                const idKey = (schema.fields.find(x => x.isKey) || schema.fields[0]).name;
+                const idVal = r[String(idKey).toLowerCase()];
+
+                return `<tr>
+              ${cells}
+              <td style="text-align:right; display:flex; gap:6px; justify-content:flex-end;">
+                <button style="padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); cursor:pointer;" onclick="editRowByIndex(${idx})">Edit</button>
+                <button style="padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); cursor:pointer;" onclick="deleteRowByIndex(${idx})">Delete</button>
+              </td>
+            </tr>`;
+            }).join('');
+        }
+
+        // ****** 修改：runQuery 使用当前数据库 ******
+        async function runQuery() {
+            const table = document.getElementById('tableSel').value;
+
+            const field = document.getElementById('filterFieldSel').value;
+            const op = document.getElementById('filterOpSel').value;
+            const valRaw = (document.getElementById('filterValInput').value || '').trim();
+
+            let filter = '';
+            if (valRaw !== '') {
+                const needsQuote = /\s/.test(valRaw);
+                const val = needsQuote ? `"${valRaw.replace(/"/g, '\\"')}"` : valRaw;
+                filter = (op === 'CONTAINS') ? `${field} CONTAINS ${val}` : `${field} ${op} ${val}`;
+            }
+
+            try {
+                const data = await api('/api/query', {
+                    schema: state.currentDb,  // 使用当前数据库
+                    table,
+                    filter,
+                    limit: 200
+                });
+                state.rows = data.rows || [];
+                renderTable(state.rows);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // ****** 修改：addRow 使用当前数据库 ******
+        /*async function addRow() {
+            const schema = state.currentSchema;
+            if (!schema) return;
+
+            const row = {};
+            for (const f of schema.fields) {
+                const key = String(f.name || '').toLowerCase();
+                const hint = f.isKey ? '(leave empty for auto)' : '';
+                const v = prompt(`${f.name} ${hint}`, '');
+                if (v === null) return;
+                row[key] = v;
+            }
+
+            try {
+                await api('/api/insert', {
+                    schema: state.currentDb,  // 使用当前数据库
+                    table: state.currentSchema.table,
+                    row
+                });
+                setBanner('插入成功');
+                await runQuery();
+            } catch (e) {
+                console.error(e);
+            }
+        }*/
+
+        // ****** 修改：图形化插入记录 ******
+        function showInsertRowModal() {
+            const schema = state.currentSchema;
+            if (!schema) {
+                setBanner('请先选择数据表', 'var(--danger)');
+                return;
+            }
+
+            document.getElementById('insertRowModal').style.display = 'flex';
+            document.getElementById('insertTableName').textContent = `表: ${schema.table}`;
+
+            generateInsertFields(schema);
+            updateSqlPreview();
+        }
+
+        function hideInsertRowModal() {
+            document.getElementById('insertRowModal').style.display = 'none';
+        }
+
+        function generateInsertFields(schema) {
+            const container = document.getElementById('insertFieldsContainer');
+            container.innerHTML = '';
+
+            if (!schema || !Array.isArray(schema.fields)) {
+                container.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 20px;">无可用字段</div>';
+                return;
+            }
+
+            schema.fields.forEach((field, index) => {
+                const fieldDiv = document.createElement('div');
+                fieldDiv.className = 'form-row-insert';
+
+                const isRequired = field.isKey || !field.nullable;
+                const defaultValue = getDefaultValue(field);
+
+                fieldDiv.innerHTML = `
+            <div>
+                <label for="field_${index}">
+                    ${field.name} ${isRequired ? '<span class="required-star">*</span>' : ''}
+                </label>
+                <div class="field-info">
+                    类型: ${field.type} | 
+                    ${field.isKey ? '主键' : ''} ${field.nullable ? '可空' : '非空'}
+                </div>
+            </div>
+            <div>
+                <input type="text" id="field_${index}" value="${defaultValue}" 
+                       placeholder="输入 ${field.type} 值" oninput="updateSqlPreview()" ${field.isKey ? 'style="border-left: 3px solid var(--accent);"' : ''}>
+            </div>
+        `;
+
+                container.appendChild(fieldDiv);
+            });
+        }
+
+        function getDefaultValue(field) {
+            // 根据字段类型提供合适的默认值
+            const type = field.type.toLowerCase();
+
+            if (type.includes('int')) {
+                if (field.isKey) {
+                    // 为主键生成一个递增的值
+                    if (!window.lastAutoId) window.lastAutoId = {};
+                    const tableName = state.currentSchema?.table || 'default';
+                    if (!window.lastAutoId[tableName]) window.lastAutoId[tableName] = 1000;
+                    window.lastAutoId[tableName]++;
+                    return window.lastAutoId[tableName].toString();
+                }
+                return '0';
+            }
+            if (type.includes('char') || type.includes('text')) return '';
+            if (type.includes('date')) return new Date().toISOString().split('T')[0];
+            if (type.includes('datetime')) return new Date().toISOString().replace('T', ' ').split('.')[0];
+            if (type.includes('double') || type.includes('float')) return '0.0';
+            if (type.includes('bool')) return 'true';
+
+            return '';
+        }
+
+        function updateSqlPreview() {
+            const schema = state.currentSchema;
+            if (!schema) return;
+
+            const values = [];
+            let hasError = false;
+
+            schema.fields.forEach((field, index) => {
+                const input = document.getElementById(`field_${index}`);
+                if (!input) return;
+
+                let value = input.value.trim();
+
+                // 验证必填字段
+                if ((field.isKey || !field.nullable) && !value) {
+                    hasError = true;
+                    input.style.borderColor = 'var(--danger)';
+                } else {
+                    input.style.borderColor = '';
+
+                    // 处理字符串值（添加引号）
+                    if (field.type.includes('char') || field.type.includes('text') ||
+                        field.type.includes('date') || field.type.includes('datetime')) { // 修复：改为 includes('datetime')
+                        value = `'${value.replace(/'/g, "''")}'`;
+                    }
+
+                    values.push(value);
+                }
+            });
+
+            // 构建SQL预览
+            const fieldNames = schema.fields.map(f => f.name).join(', ');
+            const valuesStr = values.join(', ');
+
+            let sql = `INSERT INTO ${schema.table} (${fieldNames})\nVALUES (${valuesStr});`; // 修复：改为 schema.table
+
+            // 如果有错误，高亮显示
+            const preview = document.getElementById('sqlPreview');
+            preview.innerHTML = hasError ?
+                `<span style="color: var(--danger);">请填写所有必填字段（标有 * 的字段）</span>` :
+                sql.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;');
+        }
+
+        function validateField(input) {
+            const index = parseInt(input.id.replace('field_', ''));
+            const schema = state.currentSchema;
+            if (!schema || !schema.fields[index]) return;
+
+            const field = schema.fields[index];
+            const value = input.value.trim();
+
+            // 清除之前的错误状态
+            input.style.borderColor = '';
+
+            // 非主键字段的验证
+            if (!field.isKey) {
+                // 必填字段验证
+                if (!field.nullable && !value) {
+                    input.style.borderColor = 'var(--danger)';
+                    return false;
+                }
+
+                // 数据类型验证
+                if (value) {
+                    const type = field.type.toLowerCase();
+
+                    if (type.includes('int')) {
+                        if (!/^-?\d+$/.test(value)) {
+                            input.style.borderColor = 'var(--danger)';
+                            return false;
+                        }
+                    }
+                    else if (type.includes('double') || type.includes('float')) {
+                        if (!/^-?\d*\.?\d+$/.test(value)) {
+                            input.style.borderColor = 'var(--danger)';
+                            return false;
+                        }
+                    }
+                    else if (type.includes('bool')) {
+                        if (!/^(true|false|0|1)$/i.test(value)) {
+                            input.style.borderColor = 'var(--danger)';
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        function initializeFieldValidation() {
+            setupFieldValidation();
+        }
+
+        // 在页面加载完成后设置验证
+        document.addEventListener('DOMContentLoaded', function () {
+            initializeFieldValidation();
         });
 
-        if (current && schemas.some(s => s.table === current)) sel.value = current;
-        if (!sel.value && sel.options.length > 0) sel.value = sel.options[0].value;
+        async function insertRowFromForm() {
+            const schema = state.currentSchema;
+            if (!schema) return;
 
-        setCurrentSchema(sel.value);
-      } catch (e) {
-        console.error(e);
-      }
-    }
+            const row = {};
+            let hasError = false;
 
-    function setCurrentSchema(tableName) {
-      const key = String(tableName || '').toLowerCase();
-      state.currentSchema = state.schemas[key] || null;
+            // 收集字段值
+            schema.fields.forEach((field, index) => {
+                const input = document.getElementById(`field_${index}`);
+                if (!input) return;
 
-      // populate filter field select
-      const fieldSel = document.getElementById('filterFieldSel');
-      fieldSel.innerHTML = '';
-      if (state.currentSchema && Array.isArray(state.currentSchema.fields)) {
-        state.currentSchema.fields.forEach(f => {
-          const opt = document.createElement('option');
-          opt.value = f.name;
-          opt.textContent = f.name;
-          fieldSel.appendChild(opt);
-        });
-      }
-    }
+                const value = input.value.trim();
 
-    function renderTable(rows) {
-      const schema = state.currentSchema;
-      const table = document.getElementById('dataGrid');
+                // 验证必填字段
+                if ((field.isKey || !field.nullable) && !value) {
+                    hasError = true;
+                    input.style.borderColor = 'var(--danger)';
+                } else {
+                    input.style.borderColor = '';
+                    const key = String(field.name || '').toLowerCase();
+                    row[key] = value;
+                }
+            });
 
-      const thead = table.querySelector('thead');
-      const tbody = table.querySelector('tbody');
+            if (hasError) {
+                setBanner('请填写所有必填字段', 'var(--danger)');
+                return;
+            }
 
-      if (!schema || !Array.isArray(schema.fields)) {
-        thead.innerHTML = '<tr><th>Empty schema</th></tr>';
-        tbody.innerHTML = '';
-        return;
-      }
+            try {
+                await api('/api/insert', {
+                    schema: state.currentDb,
+                    table: schema.table,
+                    row
+                });
 
-      // header
-      thead.innerHTML = `<tr>
-        ${schema.fields.map(f => `<th>${esc(f.name)}</th>`).join('')}
-        <th style="width:120px; text-align:right;">Actions</th>
-      </tr>`;
+                hideInsertRowModal();
+                setBanner('记录插入成功');
+                await runQuery();
 
-      // rows
-      tbody.innerHTML = rows.map((r, idx) => {
-        const cells = schema.fields.map(f => {
-          const key = String(f.name || '').toLowerCase();
-          return `<td>${esc(r[key])}</td>`;
-        }).join('');
+            } catch (e) {
+                setBanner(e.message, 'var(--danger)');
+            }
+        }
 
-        // pick id for edit/delete: assume first key field; fallback first column
-        const idKey = (schema.fields.find(x => x.isKey) || schema.fields[0]).name;
-        const idVal = r[String(idKey).toLowerCase()];
+        // ****** 修改：createTable 使用当前数据库 ******
+        /*async function createTable() {
+          const sql = prompt(
+            'CREATE TABLE SQL',
+            'CREATE TABLE users2 (id int primary key, name char[32] not null, age int, role char[16], status char[16])'
+          );
+          if (sql === null || sql.trim() === '') return;
 
-        return `<tr>
-          ${cells}
-          <td style="text-align:right; display:flex; gap:6px; justify-content:flex-end;">
-            <button style="padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); cursor:pointer;" onclick="editRowByIndex(${idx})">Edit</button>
-            <button style="padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); cursor:pointer;" onclick="deleteRowByIndex(${idx})">Delete</button>
-          </td>
-        </tr>`;
-      }).join('');
-    }
+          try {
+            await api('/api/create_table', { sql: sql.trim() });
+            await loadTables();
+            setBanner('创建成功');
+            await runQuery();
+          } catch (e) {
+            console.error(e);
+          }
+        }*/
 
-    // ****** 修改：runQuery 使用当前数据库 ******
-    async function runQuery() {
-      const table = document.getElementById('tableSel').value;
+        // ****** 修改：图形化创建表 ******
+        function showCreateTableModal() {
+            document.getElementById('createTableModal').style.display = 'flex';
+            showStep1();
+        }
 
-      const field = document.getElementById('filterFieldSel').value;
-      const op = document.getElementById('filterOpSel').value;
-      const valRaw = (document.getElementById('filterValInput').value || '').trim();
+        function hideCreateTableModal() {
+            document.getElementById('createTableModal').style.display = 'none';
+        }
 
-      let filter = '';
-      if (valRaw !== '') {
-        const needsQuote = /\s/.test(valRaw);
-        const val = needsQuote ? `"${valRaw.replace(/"/g, '\\"')}"` : valRaw;
-        filter = (op === 'CONTAINS') ? `${field} CONTAINS ${val}` : `${field} ${op} ${val}`;
-      }
+        function showStep1() {
+            document.getElementById('step1').classList.add('active');
+            document.getElementById('step2').classList.remove('active');
+        }
 
-      try {
-        const data = await api('/api/query', { 
-          schema: state.currentDb,  // 使用当前数据库
-          table, 
-          filter, 
-          limit: 200 
-        });
-        state.rows = data.rows || [];
-        renderTable(state.rows);
-      } catch (e) {
-        console.error(e);
-      }
-    }
+        function showStep2() {
+            const tableName = document.getElementById('tableName').value.trim();
+            const columnCount = parseInt(document.getElementById('columnCount').value);
 
-    // ****** 修改：addRow 使用当前数据库 ******
-    async function addRow() {
-      const schema = state.currentSchema;
-      if (!schema) return;
+            if (!tableName) {
+                setBanner('请输入表名', 'var(--danger)');
+                return;
+            }
 
-      const row = {};
-      for (const f of schema.fields) {
-        const key = String(f.name || '').toLowerCase();
-        const hint = f.isKey ? '(leave empty for auto)' : '';
-        const v = prompt(`${f.name} ${hint}`, '');
-        if (v === null) return;
-        row[key] = v;
-      }
+            if (columnCount < 1 || columnCount > 20) {
+                setBanner('列数必须在1-20之间', 'var(--danger)');
+                return;
+            }
 
-      try {
-        await api('/api/insert', { 
-          schema: state.currentDb,  // 使用当前数据库
-          table: state.currentSchema.table, 
-          row 
-        });
-        setBanner('插入成功');
-        await runQuery();
-      } catch (e) {
-        console.error(e);
-      }
-    }
+            document.getElementById('step1').classList.remove('active');
+            document.getElementById('step2').classList.add('active');
+            document.getElementById('tableNameDisplay').textContent = `表名: ${tableName}`;
 
-    // ****** 修改：createTable 使用当前数据库 ******
-    async function createTable() {
-      const sql = prompt(
-        'CREATE TABLE SQL',
-        'CREATE TABLE users2 (id int primary key, name char[32] not null, age int, role char[16], status char[16])'
-      );
-      if (sql === null || sql.trim() === '') return;
+            generateColumnInputs(columnCount);
+        }
 
-      try {
-        await api('/api/create_table', { sql: sql.trim() });
-        await loadTables();
-        setBanner('创建成功');
-        await runQuery();
-      } catch (e) {
-        console.error(e);
-      }
-    }
+        function generateColumnInputs(columnCount) {
+            const container = document.getElementById('columnsContainer');
+            container.innerHTML = '';
 
-    // ****** 修改：editRowByIndex 使用当前数据库 ******
-    async function editRowByIndex(idx) {
-      const schema = state.currentSchema;
-      const row0 = state.rows[idx];
-      if (!schema || !row0) return;
+            for (let i = 0; i < columnCount; i++) {
+                const columnDiv = document.createElement('div');
+                columnDiv.className = 'form-row';
+                columnDiv.innerHTML = `
+          <input type="text" placeholder="列名" class="column-name" value="col${i + 1}">
+          <select class="column-type">
+            <option value="int">INT</option>
+            <option value="char[32]">CHAR(32)</option>
+            <option value="char[64]">CHAR(64)</option>
+            <option value="char[128]">CHAR(128)</option>
+            <option value="double">DOUBLE</option>
+            <option value="date">DATE</option>
+            <option value="datetime">DATETIME</option>
+          </select>
+          <div class="checkbox-group">
+            <input type="checkbox" class="is-primary-key" onchange="togglePrimaryKey(this, ${i})"> 主键
+          </div>
+          <div class="checkbox-group">
+            <input type="checkbox" class="allow-null" checked> 允许NULL
+          </div>
+        `;
+                container.appendChild(columnDiv);
+            }
+        }
 
-      const keyField = (schema.fields.find(x => x.isKey) || schema.fields[0]);
-      const idKey = String(keyField.name).toLowerCase();
-      const idVal = row0[idKey];
-      if (!idVal) return;
+        function togglePrimaryKey(checkbox, index) {
+            // 确保只有一个主键
+            const checkboxes = document.querySelectorAll('.is-primary-key');
+            checkboxes.forEach((cb, i) => {
+                if (i !== index && checkbox.checked) {
+                    cb.checked = false;
+                }
+            });
 
-      const patch = {};
-      for (const f of schema.fields) {
-        const k = String(f.name).toLowerCase();
-        if (k === idKey) continue;
-        const oldV = row0[k] ?? '';
-        const v = prompt(`${f.name}`, oldV);
-        if (v === null) return;
-        patch[k] = v;
-      }
+            // 主键自动设置为不允许NULL
+            if (checkbox.checked) {
+                const allowNullCheckbox = checkbox.closest('.form-row').querySelector('.allow-null');
+                allowNullCheckbox.checked = false;
+                allowNullCheckbox.disabled = true;
+            } else {
+                const allowNullCheckbox = checkbox.closest('.form-row').querySelector('.allow-null');
+                allowNullCheckbox.disabled = false;
+            }
+        }
 
-      try {
-        await api('/api/update', { 
-          schema: state.currentDb,  // 使用当前数据库
-          table: state.currentSchema.table, 
-          id: String(idVal), 
-          patch 
-        });
-        setBanner('更新成功');
-        await runQuery();
-      } catch (e) {
-        console.error(e);
-      }
-    }
+        async function createTableFromForm() {
+            const tableName = document.getElementById('tableName').value.trim();
+            const columnRows = document.querySelectorAll('#columnsContainer .form-row');
 
-    // ****** 修改：deleteRowByIndex 使用当前数据库 ******
-    async function deleteRowByIndex(idx) {
-      const schema = state.currentSchema;
-      const row = state.rows[idx];
-      if (!schema || !row) return;
+            if (!tableName) {
+                setBanner('表名不能为空', 'var(--danger)');
+                return;
+            }
 
-      const keyField = (schema.fields.find(x => x.isKey) || schema.fields[0]);
-      const idKey = String(keyField.name).toLowerCase();
-      const idVal = row[idKey];
-      if (!idVal) return;
+            const fields = [];
+            let hasPrimaryKey = false;
 
-      if (!confirm('Delete row #' + idVal + '?')) return;
+            for (let i = 0; i < columnRows.length; i++) {
+                const row = columnRows[i];
+                const name = row.querySelector('.column-name').value.trim();
+                const type = row.querySelector('.column-type').value;
+                const isPrimaryKey = row.querySelector('.is-primary-key').checked;
+                const allowNull = row.querySelector('.allow-null').checked;
 
-      try {
-        await api('/api/delete', { 
-          schema: state.currentDb,  // 使用当前数据库
-          table: state.currentSchema.table, 
-          id: String(idVal) 
-        });
-        setBanner('删除成功');
-        await runQuery();
-      } catch (e) {
-        console.error(e);
-      }
-    }
+                if (!name) {
+                    setBanner(`第${i + 1}列的名称不能为空`, 'var(--danger)');
+                    return;
+                }
 
-    async function onTableChange() {
-      const table = document.getElementById('tableSel').value;
-      setCurrentSchema(table);
-      await runQuery();
-    }
+                if (isPrimaryKey) {
+                    hasPrimaryKey = true;
+                }
 
-    // ****** 修改：初始化时先加载数据库 ******
-    function doLogout() {
-      sessionStorage.removeItem('db_token');
-      sessionStorage.removeItem('db_user');
-      localStorage.removeItem('db_token');
-      localStorage.removeItem('db_user');
-      window.location.href = '/login.html';
-    }
+                fields.push({
+                    name: name,
+                    type: type,
+                    isKey: isPrimaryKey,
+                    nullable: allowNull
+                });
+            }
 
-    (async () => {
-      await loadDatabases();  // 先加载数据库列表
-      await loadTables();     // 再加载表
-      const sel = document.getElementById('tableSel');
-      if (!sel.value && sel.options.length > 0) sel.value = sel.options[0].value;
-      await runQuery();
-    })();
-  </script>
+            // 如果没有指定主键，自动将第一列设为主键
+            if (!hasPrimaryKey && fields.length > 0) {
+                fields[0].isKey = true;
+                fields[0].nullable = false;
+            }
+
+            // 构建CREATE TABLE SQL
+            let sql = `CREATE TABLE ${tableName} (`;
+            sql += fields.map(field => {
+                let fieldDef = `${field.name} ${field.type}`;
+                if (field.isKey) {
+                    fieldDef += ' PRIMARY KEY';
+                }
+                if (!field.nullable) {
+                    fieldDef += ' NOT NULL';
+                }
+                return fieldDef;
+            }).join(', ');
+            sql += ')';
+
+            try {
+                await api('/api/create_table', { sql: sql });
+                hideCreateTableModal();
+                await loadTables();
+                setBanner(`表 "${tableName}" 创建成功`);
+
+                // 自动选择新创建的表
+                const tableSel = document.getElementById('tableSel');
+                tableSel.value = tableName;
+                await onTableChange();
+
+            } catch (e) {
+                setBanner(e.message, 'var(--danger)');
+            }
+        }
+
+        // ****** 修改：editRowByIndex 使用当前数据库 ******
+        async function editRowByIndex(idx) {
+            const schema = state.currentSchema;
+            const row0 = state.rows[idx];
+            if (!schema || !row0) return;
+
+            const keyField = (schema.fields.find(x => x.isKey) || schema.fields[0]);
+            const idKey = String(keyField.name).toLowerCase();
+            const idVal = row0[idKey];
+            if (!idVal) return;
+
+            const patch = {};
+            for (const f of schema.fields) {
+                const k = String(f.name).toLowerCase();
+                if (k === idKey) continue;
+                const oldV = row0[k] ?? '';
+                const v = prompt(`${f.name}`, oldV);
+                if (v === null) return;
+                patch[k] = v;
+            }
+
+            try {
+                await api('/api/update', {
+                    schema: state.currentDb,  // 使用当前数据库
+                    table: state.currentSchema.table,
+                    id: String(idVal),
+                    patch
+                });
+                setBanner('更新成功');
+                await runQuery();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // ****** 修改：deleteRowByIndex 使用当前数据库 ******
+        async function deleteRowByIndex(idx) {
+            const schema = state.currentSchema;
+            const row = state.rows[idx];
+            if (!schema || !row) return;
+
+            const keyField = (schema.fields.find(x => x.isKey) || schema.fields[0]);
+            const idKey = String(keyField.name).toLowerCase();
+            const idVal = row[idKey];
+            if (!idVal) return;
+
+            if (!confirm('Delete row #' + idVal + '?')) return;
+
+            try {
+                await api('/api/delete', {
+                    schema: state.currentDb,  // 使用当前数据库
+                    table: state.currentSchema.table,
+                    id: String(idVal)
+                });
+                setBanner('删除成功');
+                await runQuery();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function onTableChange() {
+            const table = document.getElementById('tableSel').value;
+            setCurrentSchema(table);
+            await runQuery();
+        }
+
+        // ****** 修改：初始化时先加载数据库 ******
+        function doLogout() {
+            sessionStorage.removeItem('db_token');
+            sessionStorage.removeItem('db_user');
+            localStorage.removeItem('db_token');
+            localStorage.removeItem('db_user');
+            window.location.href = '/login.html';
+        }
+
+        (async () => {
+            await loadDatabases();  // 先加载数据库列表
+            await loadTables();     // 再加载表
+            const sel = document.getElementById('tableSel');
+            if (!sel.value && sel.options.length > 0) sel.value = sel.options[0].value;
+            await runQuery();
+        })();
+        // 设置表单验证
+        initializeFieldValidation();
+    </script>
 </body>
 </html>
