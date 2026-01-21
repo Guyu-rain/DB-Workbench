@@ -91,6 +91,35 @@ std::string WalPath(const std::string& db_name) {
   return (DbDirPath(db_name) / (db_name + ".wal")).string();
 }
 
+std::filesystem::path BackupRootPath() {
+  return DataDirPath() / "backups";
+}
+
+bool EnsureBackupRoot(std::string& err) {
+  try {
+    if (!EnsureDataDir(err)) return false;
+    auto dir = BackupRootPath();
+    if (!std::filesystem::exists(dir)) {
+      if (!std::filesystem::create_directories(dir)) {
+        err = "Failed to create backup root directory: " + dir.string();
+        return false;
+      }
+    }
+    return true;
+  } catch (const std::filesystem::filesystem_error& e) {
+    err = std::string("Filesystem error: ") + e.what();
+    return false;
+  }
+}
+
+std::filesystem::path BackupDbDirPath(const std::string& db_name) {
+  return BackupRootPath() / db_name;
+}
+
+std::filesystem::path BackupPath(const std::string& db_name, const std::string& backup_name) {
+  return BackupDbDirPath(db_name) / backup_name;
+}
+
 std::string IndexPathFromDat(const std::string& dat_path, const std::string& table_name, const std::string& index_name) {
   auto dir = IndexDirFromDat(dat_path);
   std::string file = table_name + "." + index_name + ".idx";

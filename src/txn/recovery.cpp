@@ -50,14 +50,26 @@ TxnId Recovery::Run(StorageEngine& engine, const std::string& db_name, std::stri
   if (!log.ReadAll(records, err)) return 0;
 
   TxnId max_txn = 0;
-  LSN max_lsn = 0;
+  LSN max_lsn_total = 0;
+  LSN min_lsn = 0;
+  for (const auto& rec : records) {
+    if (rec.txn_id > max_txn) max_txn = rec.txn_id;
+    if (rec.lsn > max_lsn_total) max_lsn_total = rec.lsn;
+    if (rec.type != LogType::CHECKPOINT) continue;
+    CheckpointMeta meta;
+    if (DecodeCheckpointMeta(rec, meta) && meta.checkpoint_lsn != 0) {
+      min_lsn = std::max(min_lsn, static_cast<LSN>(meta.checkpoint_lsn));
+    } else {
+      min_lsn = std::max(min_lsn, rec.lsn);
+    }
+  }
   std::map<TxnId, bool> committed;
   std::map<TxnId, bool> active;
   std::map<TxnId, std::vector<LogRecord>> per_txn;
 
   for (const auto& rec : records) {
-    if (rec.txn_id > max_txn) max_txn = rec.txn_id;
-    if (rec.lsn > max_lsn) max_lsn = rec.lsn;
+    if (min_lsn != 0 && rec.lsn < min_lsn) continue;
+    if (rec.type == LogType::CHECKPOINT) continue;
     per_txn[rec.txn_id].push_back(rec);
     if (rec.type == LogType::BEGIN) active[rec.txn_id] = true;
     if (rec.type == LogType::COMMIT) { committed[rec.txn_id] = true; active.erase(rec.txn_id); }
@@ -65,6 +77,7 @@ TxnId Recovery::Run(StorageEngine& engine, const std::string& db_name, std::stri
   }
 
   for (const auto& rec : records) {
+    if (min_lsn != 0 && rec.lsn < min_lsn) continue;
     if (committed.count(rec.txn_id)) {
       if (!ApplyRedo(engine, db_name, rec, err)) return max_txn;
     }
@@ -79,6 +92,6 @@ TxnId Recovery::Run(StorageEngine& engine, const std::string& db_name, std::stri
     }
   }
 
-  if (max_lsn_out) *max_lsn_out = max_lsn;
+  if (max_lsn_out) *max_lsn_out = max_lsn_total;
   return max_txn;
 }

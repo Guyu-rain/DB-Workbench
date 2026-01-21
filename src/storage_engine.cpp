@@ -7,37 +7,80 @@
 #include <vector>       // �ṩ std::vector����Ȼ storage_engine.h �Ѱ�������������ʽ��������ȫ��
 #include <string>
 #include <filesystem>
+#include <chrono>
 #include "path_utils.h"
 namespace fs = std::filesystem;       // �ṩ std::string��ͬ�ϣ�
 
-bool StorageEngine::BackupDatabase(const std::string& dbName, const std::string& destPath, std::string& err) {
-    namespace fs = std::filesystem;
+namespace {
+bool IsSimpleName(const std::string& name) {
+    return !name.empty() && name.find_first_of("/\\") == std::string::npos;
+}
+
+std::string ManifestPath(const fs::path& backupDir) {
+    return (backupDir / "manifest.txt").string();
+}
+}
+
+bool StorageEngine::BackupDatabase(const std::string& dbName, const std::string& backupName, uint64_t checkpointLsn, std::string& err) {
+    if (!IsSimpleName(backupName)) {
+        err = "Backup name must be a single directory name";
+        return false;
+    }
+
+    if (!dbms_paths::EnsureBackupRoot(err)) return false;
+    fs::path dbDir = dbms_paths::DbDirPath(dbName);
+    if (!fs::exists(dbDir)) {
+        err = "Database directory not found: " + dbDir.string();
+        return false;
+    }
+
+    fs::path backupDir = dbms_paths::BackupPath(dbName, backupName);
     try {
-        if (!fs::exists(destPath)) {
-            if (!fs::create_directories(destPath)) {
-                err = "Failed to create directory: " + destPath;
-                return false;
-            }
-        }
-    } catch (const fs::filesystem_error& e) {
-        err = "Filesystem error: " + std::string(e.what());
+        fs::create_directories(backupDir);
+        fs::copy(dbDir, backupDir, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+    } catch (const std::exception& e) {
+        err = "Backup failed: " + std::string(e.what());
+        return false;
+    }
+
+    std::ofstream mf(ManifestPath(backupDir), std::ios::trunc);
+    if (!mf.is_open()) {
+        err = "Failed to write backup manifest: " + ManifestPath(backupDir);
+        return false;
+    }
+    uint64_t ts = static_cast<uint64_t>(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+    mf << "db=" << dbName << "\n";
+    mf << "checkpoint_lsn=" << checkpointLsn << "\n";
+    mf << "timestamp_sec=" << ts << "\n";
+    mf << "wal=" << (dbName + ".wal") << "\n";
+    mf << "wal_bak=" << (dbName + ".wal.bak") << "\n";
+    return true;
+}
+
+bool StorageEngine::RestoreDatabase(const std::string& dbName, const std::string& backupName, std::string& err) {
+    if (!IsSimpleName(backupName)) {
+        err = "Backup name must be a single directory name";
+        return false;
+    }
+
+    fs::path backupDir = dbms_paths::BackupPath(dbName, backupName);
+    if (!fs::exists(backupDir)) {
+        err = "Backup not found: " + backupDir.string();
         return false;
     }
 
     try {
         fs::path dbDir = dbms_paths::DbDirPath(dbName);
-        if (!fs::exists(dbDir)) {
-            err = "Database directory not found: " + dbDir.string();
-            return false;
-        }
-        fs::path destDir = fs::path(destPath) / dbDir.filename();
-        fs::create_directories(destDir);
-        fs::copy(dbDir, destDir, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+        if (fs::exists(dbDir)) fs::remove_all(dbDir);
+        fs::create_directories(dbDir);
+        fs::copy(backupDir, dbDir, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+        fs::path manifest = dbDir / "manifest.txt";
+        if (fs::exists(manifest)) fs::remove(manifest);
     } catch (const std::exception& e) {
-        err = "Backup failed: " + std::string(e.what());
+        err = "Restore failed: " + std::string(e.what());
         return false;
     }
-    
+
     return true;
 }
 
