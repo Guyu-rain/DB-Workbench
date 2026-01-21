@@ -312,15 +312,15 @@ bool ValidateViewPlan(const QueryPlan& plan, const std::vector<TableSchema>& sch
 }
 
 bool DeriveViewFields(const QueryPlan& plan, const std::vector<TableSchema>& schemas,
-                      std::vector<Field>& outFields, std::string& err) {
+                      std::vector<Field>& outFields, std::string& err, bool preserveQualified = false) {
     outFields.clear();
     TableSchema left;
     if (!plan.sourceTable.empty()) {
         if (!SchemaByName(schemas, plan.sourceTable, left)) { err = "Table/view not found: " + plan.sourceTable; return false; }
     } else if (plan.sourceSubQuery) {
         std::vector<Field> innerFields;
-        if (!DeriveViewFields(*plan.sourceSubQuery, schemas, innerFields, err)) return false;
-        left.tableName = plan.sourceAlias.empty() ? "Derived" : plan.sourceAlias;
+        if (!DeriveViewFields(*plan.sourceSubQuery, schemas, innerFields, err, true)) return false;
+        left.tableName = plan.sourceAlias;
         left.fields = innerFields;
     } else {
         err = "Invalid view definition (missing source)";
@@ -359,8 +359,10 @@ bool DeriveViewFields(const QueryPlan& plan, const std::vector<TableSchema>& sch
                 Field nf = f;
                 nf.isKey = false;
                 nf.nullable = true;
-                size_t dot = nf.name.rfind('.');
-                if (dot != std::string::npos) nf.name = nf.name.substr(dot + 1);
+                if (!preserveQualified) {
+                    size_t dot = nf.name.rfind('.');
+                    if (dot != std::string::npos) nf.name = nf.name.substr(dot + 1);
+                }
                 outFields.push_back(nf);
             }
             ++exprIdx;
@@ -373,6 +375,8 @@ bool DeriveViewFields(const QueryPlan& plan, const std::vector<TableSchema>& sch
         Field f;
         if (!sel.alias.empty()) {
             f.name = sel.alias;
+        } else if (preserveQualified) {
+            f.name = fieldName;
         } else {
             size_t dot = fieldName.rfind('.');
             f.name = (dot == std::string::npos) ? fieldName : fieldName.substr(dot + 1);

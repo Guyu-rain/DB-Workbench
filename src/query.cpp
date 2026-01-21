@@ -108,6 +108,62 @@ static TableSchema InferSchemaFromPlan(const TableSchema& srcSchema, const Query
     return out;
 }
 
+bool QueryService::BuildCombinedSchemaForPlan(const std::string& dbfPath, const QueryPlan& plan, TableSchema& combined, std::string& err) {
+    TableSchema source;
+    if (plan.sourceSubQuery) {
+        TableSchema innerCombined;
+        if (!BuildCombinedSchemaForPlan(dbfPath, *plan.sourceSubQuery, innerCombined, err)) return false;
+        source = InferSchemaFromPlan(innerCombined, *plan.sourceSubQuery);
+    } else if (!plan.sourceTable.empty()) {
+        if (!engine_.LoadSchema(dbfPath, plan.sourceTable, source, err)) {
+            // fallback case-insensitive search
+            std::vector<TableSchema> schemas;
+            if (!engine_.LoadSchemas(dbfPath, schemas, err)) return false;
+            bool found = false;
+            for (const auto& s : schemas) {
+                if (Lower(s.tableName) == Lower(plan.sourceTable)) { source = s; found = true; break; }
+            }
+            if (!found) { err = "Table/view not found: " + plan.sourceTable; return false; }
+        }
+    } else {
+        err = "Invalid query plan source";
+        return false;
+    }
+
+    combined.fields.clear();
+    std::string t1Prefix;
+    if (plan.sourceSubQuery) {
+        t1Prefix = plan.tableAlias;
+    } else {
+        t1Prefix = plan.tableAlias.empty() ? source.tableName : plan.tableAlias;
+    }
+    for (const auto& f : source.fields) {
+        Field nf = f;
+        if (!t1Prefix.empty()) nf.name = t1Prefix + "." + f.name;
+        combined.fields.push_back(nf);
+    }
+
+    if (!plan.joinTable.empty()) {
+        std::vector<TableSchema> allSchemas;
+        if (!engine_.LoadSchemas(dbfPath, allSchemas, err)) return false;
+        TableSchema schema2;
+        bool found = false;
+        for (const auto& s : allSchemas) {
+            if (Lower(s.tableName) == Lower(plan.joinTable)) { schema2 = s; found = true; break; }
+        }
+        if (!found) { err = "Join table not found: " + plan.joinTable; return false; }
+
+        std::string t2Prefix = plan.joinTableAlias.empty() ? schema2.tableName : plan.joinTableAlias;
+        for (const auto& f : schema2.fields) {
+            Field nf = f;
+            nf.name = t2Prefix + "." + f.name;
+            combined.fields.push_back(nf);
+        }
+    }
+
+    return true;
+}
+
 bool QueryService::ExecuteSubQuery(const std::string& datPath, const std::string& dbfPath, const QueryPlan& plan, std::vector<Record>& out, std::string& err) {
     std::function<bool(const QueryPlan&, TableSchema&)> resolveSchema = 
         [&](const QueryPlan& p, TableSchema& s) -> bool {
@@ -115,10 +171,7 @@ bool QueryService::ExecuteSubQuery(const std::string& datPath, const std::string
             return engine_.LoadSchema(dbfPath, p.sourceTable, s, err);
         }
         if (p.sourceSubQuery) {
-            TableSchema inner;
-            if (!resolveSchema(*p.sourceSubQuery, inner)) return false;
-            s = InferSchemaFromPlan(inner, *p.sourceSubQuery);
-            return true;
+            return BuildCombinedSchemaForPlan(dbfPath, *p.sourceSubQuery, s, err);
         }
         err = "Invalid plan source";
         return false;
@@ -150,9 +203,9 @@ bool QueryService::ResolvePlanSourceSchema(const std::string& dbfPath, const Que
         return false;
     }
     if (plan.sourceSubQuery) {
-        TableSchema inner;
-        if (!ResolvePlanSourceSchema(dbfPath, *plan.sourceSubQuery, inner, err)) return false;
-        schemaOut = InferSchemaFromPlan(inner, *plan.sourceSubQuery);
+        TableSchema combined;
+        if (!BuildCombinedSchemaForPlan(dbfPath, *plan.sourceSubQuery, combined, err)) return false;
+        schemaOut = InferSchemaFromPlan(combined, *plan.sourceSubQuery);
         return true;
     }
     err = "Invalid query plan source";
@@ -472,11 +525,16 @@ bool QueryService::Select(const std::string& datPath, const std::string& dbfPath
   
   // Combine Schemas (preserving alias info in field names)
   TableSchema combinedSchema;
-  std::string t1Prefix = plan.tableAlias.empty() ? schema.tableName : plan.tableAlias;
+  std::string t1Prefix;
+  if (plan.sourceSubQuery) {
+      t1Prefix = plan.tableAlias;
+  } else {
+      t1Prefix = plan.tableAlias.empty() ? schema.tableName : plan.tableAlias;
+  }
   
   for (const auto& f : schema.fields) {
       Field nf = f;
-      nf.name = t1Prefix + "." + f.name; 
+      if (!t1Prefix.empty()) nf.name = t1Prefix + "." + f.name;
       combinedSchema.fields.push_back(nf);
   }
 

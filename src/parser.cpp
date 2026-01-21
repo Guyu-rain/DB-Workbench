@@ -79,6 +79,66 @@ size_t FindKeywordTopLevel(const std::string& upperSql, const std::string& keywo
     return std::string::npos;
 }
 
+struct JoinMatch {
+    size_t pos = std::string::npos;
+    size_t keywordLen = 0;
+    JoinType type = JoinType::kInner;
+    bool natural = false;
+};
+
+bool FindLastJoinTopLevel(const std::string& upperSql, size_t startPos, size_t endPos, JoinMatch& out, int& count) {
+    int depth = 0;
+    bool inSingle = false;
+    bool inDouble = false;
+    bool inBacktick = false;
+    count = 0;
+    out = JoinMatch{};
+
+    struct KeywordSpec {
+        const char* text;
+        JoinType type;
+        bool natural;
+    };
+
+    static const KeywordSpec keywords[] = {
+        {" NATURAL LEFT JOIN ", JoinType::kLeft, true},
+        {" NATURAL RIGHT JOIN ", JoinType::kRight, true},
+        {" NATURAL INNER JOIN ", JoinType::kInner, true},
+        {" NATURAL JOIN ", JoinType::kInner, true},
+        {" LEFT JOIN ", JoinType::kLeft, false},
+        {" RIGHT JOIN ", JoinType::kRight, false},
+        {" INNER JOIN ", JoinType::kInner, false},
+        {" JOIN ", JoinType::kInner, false},
+    };
+
+    for (size_t i = startPos; i < endPos; ++i) {
+        char c = upperSql[i];
+        if (c == '\'' && !inDouble && !inBacktick) inSingle = !inSingle;
+        else if (c == '"' && !inSingle && !inBacktick) inDouble = !inDouble;
+        else if (c == '`' && !inSingle && !inDouble) inBacktick = !inBacktick;
+
+        if (!inSingle && !inDouble && !inBacktick) {
+            if (c == '(') depth++;
+            else if (c == ')') depth = std::max(0, depth - 1);
+            if (depth == 0) {
+                for (const auto& kw : keywords) {
+                    size_t len = strlen(kw.text);
+                    if (i + len <= endPos && upperSql.compare(i, len, kw.text) == 0) {
+                        out.pos = i;
+                        out.keywordLen = len;
+                        out.type = kw.type;
+                        out.natural = kw.natural;
+                        ++count;
+                        i += len - 1;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return out.pos != std::string::npos;
+}
+
 size_t FindMatchingClosingParen(const std::string& s, size_t openPos);
 
 ReferentialAction ParseReferentialActionToken(const std::string& token, bool& ok) {
@@ -1382,6 +1442,16 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         size_t havingPos = FindKeywordTopLevel(upperSql, " HAVING ", startRest);
         size_t orderPos = FindKeywordTopLevel(upperSql, " ORDER BY ", startRest);
         size_t bareJoin = std::string::npos;
+        size_t endFrom = sql.size();
+        if (wherePos != std::string::npos && wherePos < endFrom) endFrom = wherePos;
+        if (groupPos != std::string::npos && groupPos < endFrom) endFrom = groupPos;
+        if (havingPos != std::string::npos && havingPos < endFrom) endFrom = havingPos;
+        if (orderPos != std::string::npos && orderPos < endFrom) endFrom = orderPos;
+
+        JoinMatch lastJoin;
+        int joinCount = 0;
+        bool hasJoin = FindLastJoinTopLevel(upperSql, startRest, endFrom, lastJoin, joinCount);
+        bool hasMultiJoin = hasJoin && joinCount > 1;
 
         size_t naturalJoin = FindKeywordTopLevel(upperSql, " NATURAL JOIN ", startRest);
         size_t naturalLeft = FindKeywordTopLevel(upperSql, " NATURAL LEFT JOIN ", startRest);
@@ -1503,7 +1573,73 @@ ParsedCommand Parser::Parse(const std::string& rawSql, std::string& err) {
         }
 
         // T2 & Join Logic
-        if (joinPos != std::string::npos) {
+        if (hasMultiJoin) {
+            std::string leftClause = Trim(sql.substr(startRest, lastJoin.pos - startRest));
+            std::string rightClauseRaw = sql.substr(lastJoin.pos, endFrom - lastJoin.pos);
+            std::string subSql = "SELECT * FROM " + leftClause;
+            Parser subParser;
+            std::string subErr;
+            ParsedCommand subCmd = subParser.Parse(subSql, subErr);
+            if (!subErr.empty() || subCmd.type != CommandType::kSelect) {
+                err = subErr.empty() ? "Invalid derived join source" : subErr;
+                return cmd;
+            }
+            cmd.query.sourceSubQuery = std::make_shared<QueryPlan>(subCmd.query);
+            cmd.tableName.clear();
+            cmd.query.sourceTable.clear();
+            cmd.query.tableAlias.clear();
+            cmd.query.sourceAlias.clear();
+
+            cmd.query.joinType = lastJoin.type;
+            cmd.query.isNaturalJoin = lastJoin.natural;
+
+            std::string upperRight = ToUpper(rightClauseRaw);
+            if (cmd.query.isNaturalJoin) {
+                std::string t2Clause = Trim(rightClauseRaw.substr(lastJoin.keywordLen));
+                std::string upT2 = ToUpper(t2Clause);
+                size_t asPos = upT2.find(" AS ");
+                if (asPos != std::string::npos) {
+                    cmd.query.joinTable = Trim(t2Clause.substr(0, asPos));
+                    cmd.query.joinTableAlias = Trim(t2Clause.substr(asPos + 4));
+                } else {
+                    size_t sp = t2Clause.rfind(' ');
+                    if (sp != std::string::npos) {
+                        cmd.query.joinTable = Trim(t2Clause.substr(0, sp));
+                        cmd.query.joinTableAlias = Trim(t2Clause.substr(sp + 1));
+                    } else {
+                        cmd.query.joinTable = t2Clause;
+                    }
+                }
+            } else {
+                size_t onPos = FindKeywordTopLevel(upperRight, " ON ", 0);
+                if (onPos == std::string::npos) { err = "JOIN missing ON"; return cmd; }
+                std::string t2Clause = Trim(rightClauseRaw.substr(lastJoin.keywordLen, onPos - lastJoin.keywordLen));
+
+                std::string upT2 = ToUpper(t2Clause);
+                size_t asPos = upT2.find(" AS ");
+                if (asPos != std::string::npos) {
+                    cmd.query.joinTable = Trim(t2Clause.substr(0, asPos));
+                    cmd.query.joinTableAlias = Trim(t2Clause.substr(asPos + 4));
+                } else {
+                    size_t sp = t2Clause.rfind(' ');
+                    if (sp != std::string::npos) {
+                        cmd.query.joinTable = Trim(t2Clause.substr(0, sp));
+                        cmd.query.joinTableAlias = Trim(t2Clause.substr(sp + 1));
+                    } else {
+                        cmd.query.joinTable = t2Clause;
+                    }
+                }
+
+                std::string onCond = Trim(rightClauseRaw.substr(onPos + 4));
+                auto eq = onCond.find('=');
+                if (eq != std::string::npos) {
+                    cmd.query.joinOnLeft = Trim(onCond.substr(0, eq));
+                    cmd.query.joinOnRight = Trim(onCond.substr(eq + 1));
+                } else {
+                    err = "Invalid JOIN ON (e.g. T1.id = T2.id)"; return cmd;
+                }
+            }
+        } else if (joinPos != std::string::npos) {
             size_t startT2 = bareJoin + 6; // After " JOIN "
             size_t onPos = FindKeywordTopLevel(upperSql, " ON ", startT2);
             if (cmd.query.isNaturalJoin) {
