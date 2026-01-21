@@ -267,6 +267,24 @@ bool StorageEngine::LoadSchemas(const std::string& dbfPath,
             (void)hasFk;
         }
 
+        // View metadata (optional; old files may omit)
+        if (ifs.peek() != EOF && ifs.peek() != kTableSep) {
+            std::streampos viewPos = ifs.tellg();
+            char viewFlag = 0;
+            ifs.read(&viewFlag, 1);
+            if (!ifs) return false;
+            if (viewFlag == 0 || viewFlag == 1) {
+                schema.isView = (viewFlag != 0);
+                if (schema.isView) {
+                    if (!ReadString(ifs, schema.viewSql)) return false;
+                }
+            } else {
+                // Not a view flag; rewind for forward compatibility.
+                ifs.clear();
+                ifs.seekg(viewPos);
+            }
+        }
+
         schemas.push_back(schema);
     }
 
@@ -319,6 +337,13 @@ bool StorageEngine::SaveSchemas(const std::string& dbfPath, const std::vector<Ta
             char onUpd = static_cast<char>(fk.onUpdate);
             ofs.write(&onDel, 1);
             ofs.write(&onUpd, 1);
+        }
+
+        // View metadata (backward compatible: old files omit these bytes)
+        char viewFlag = schema.isView ? 1 : 0;
+        ofs.write(&viewFlag, 1);
+        if (schema.isView) {
+            if (!WriteString(ofs, schema.viewSql)) return false;
         }
     }
     return static_cast<bool>(ofs);

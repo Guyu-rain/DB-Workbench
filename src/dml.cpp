@@ -395,6 +395,7 @@ bool DMLService::Match(const TableSchema& schema, const Record& rec, const std::
 
 bool DMLService::Insert(const std::string& datPath, const std::string& dbfPath, const TableSchema& schema, const std::vector<Record>& records, std::string& err,
                         Txn* txn, LogManager* log, LockManager* lock_manager) {
+  if (schema.isView) { err = "Cannot INSERT into a view"; return false; }
   // Map field names to indices
   std::map<std::string, size_t> fieldMap;
   for(size_t i=0; i<schema.fields.size(); ++i) fieldMap[schema.fields[i].name] = i;
@@ -536,6 +537,7 @@ bool DMLService::Insert(const std::string& datPath, const std::string& dbfPath, 
 bool DMLService::Delete(const std::string& datPath, const std::string& dbfPath, const TableSchema& schema,
                         const std::vector<Condition>& conditions, ReferentialAction action, bool actionSpecified,
                         std::string& err, Txn* txn, LogManager* log, LockManager* lock_manager) {
+  if (schema.isView) { err = "Cannot DELETE from a view"; return false; }
   std::vector<TableSchema> allSchemas;
   if (!engine_.LoadSchemas(dbfPath, allSchemas, err)) return false;
 
@@ -680,6 +682,7 @@ bool DMLService::Delete(const std::string& datPath, const std::string& dbfPath, 
 bool DMLService::Update(const std::string& datPath, const std::string& dbfPath, const TableSchema& schema, const std::vector<Condition>& conditions,
                         const std::vector<std::pair<std::string, std::string>>& assignments, std::string& err,
                         Txn* txn, LogManager* log, LockManager* lock_manager) {
+  if (schema.isView) { err = "Cannot UPDATE a view"; return false; }
   std::map<std::string, TableSchema> schemaCache;
   auto applyAssignments = [&](const Record& src) {
     Record updated = src;

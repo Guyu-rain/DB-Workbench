@@ -23,4 +23,6 @@ class QueryService {
   // Helper to execute subquery
   bool ExecuteSubQuery(const std::string& datPath, const std::string& dbfPath, const QueryPlan& plan, std::vector<Record>& out, std::string& err);
   bool ExecuteSubQuery(const std::string& datPath, const std::string& dbfPath, const QueryPlan& plan, std::vector<Record>& out, std::string& err, const Record* outerRec, const TableSchema* outerSchema);
+  bool EvaluateView(const std::string& datPath, const std::string& dbfPath, const TableSchema& viewSchema, std::vector<Record>& out, std::string& err, Txn* txn, LockManager* lock_manager, int depth = 0);
+  bool ResolvePlanSourceSchema(const std::string& dbfPath, const QueryPlan& plan, TableSchema& schemaOut, std::string& err);
 };
