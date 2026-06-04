@@ -21,7 +21,7 @@ cmake -S . -B build
 cmake --build build -j
 ```
 
-## 运行
+## 运行（bash 中）
 ```bash
 ./build/dbms
 ```
